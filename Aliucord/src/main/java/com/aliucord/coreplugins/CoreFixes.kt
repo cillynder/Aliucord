@@ -109,7 +109,7 @@ internal class CoreFixes : CorePlugin(Manifest("CoreFixes")) {
         fixStockEmojis()
         fixAutoModEmbed()
         fixKeyboardCrash()
-        fixAnimatedWebp()
+        fixAnimatedContent()
         fixAnimatedPreviews()
         fixMemberListGroups()
         fixAppBar()
@@ -266,7 +266,28 @@ internal class CoreFixes : CorePlugin(Manifest("CoreFixes")) {
         }
     }
 
-    private fun fixAnimatedWebp() = tryPatch("Fix animated webps not displaying") {
+    @Suppress("NOTHING_TO_INLINE")
+    private inline val String.isAnimatable get() =
+        this.substringBeforeLast("?").run {
+            endsWith(".gif") || endsWith(".webp") || endsWith(".avif")
+        }
+    @Suppress("NOTHING_TO_INLINE")
+    private inline val Uri.isAnimatable get() = this.toString().isAnimatable
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun Uri.asAnimatedWebp(animated: Boolean = true): Uri {
+        val uri = this
+        val filteredQueryKeys = uri.queryParameterNames.filter { it != "animated" && it != "format" }
+
+        return uri.buildUpon()
+            .clearQuery()
+            .apply { filteredQueryKeys.forEach { appendQueryParameter(it, uri.getQueryParameter(it)) } }
+            .appendQueryParameter("animated", animated.toString())
+            .appendQueryParameter("format", "webp")
+            .build()
+    }
+
+    private fun fixAnimatedContent() = tryPatch("Fix animated webps and avifs not displaying") {
         // Use webp for all icons
         // I have tested with api level 28 to ensure that static webp works correctly; it is
         // still unclear why they specifically blacklisted api 28 and 29 from using static webp
@@ -308,32 +329,25 @@ internal class CoreFixes : CorePlugin(Manifest("CoreFixes")) {
             "https://cdn.discordapp.com/emojis/$id.webp?size=$size&animated=$animated"
         }
 
-        // Animate webp properly in fullscreen media view
+        // Animate webp & avif properly in fullscreen media view
         patcher.before<WidgetMedia>(
             "getFormattedUrl",
             Context::class.java, Uri::class.java,
         ) { (param, _: Context, uri: Uri) ->
-            if (uri.path?.run {
-                endsWith(".webp") || endsWith(".avif")
-            } != true) return@before
-
-            param.result = uri
-                .buildUpon()
-                .appendQueryParameter("animated", "true")
-                .appendQueryParameter("format", "webp")
-                .toString()
+            if (!uri.isAnimatable) return@before
+            param.result = uri.asAnimatedWebp().toString()
         }
 
-        // Mark webp images in (inline) embeds as animated
-        // This exists solely to make reduced motion have an effect on animated webps
-        // A caveat is that static webps will also display as "GIF" under such conditions; a proper
+        // Mark webp & avif images in (inline) embeds as animated
+        // This exists solely to make reduced motion have an effect on animated media
+        // A caveat is that static media will also display as "GIF" under such conditions; a proper
         // fix would be to check embed.image.flags shr 5 and 1 == 1 to determine if it is animated,
         // but that would be far too complicated for this edge case
         patcher.before<EmbedResourceUtils>(
             "isAnimated",
             EmbedType::class.java, String::class.java,
         ) { (param, _: EmbedType, url: String?) ->
-            if (url?.contains(".webp") == true) {
+            if (url?.isAnimatable == true) {
                 param.result = true
             }
         }
@@ -350,22 +364,10 @@ internal class CoreFixes : CorePlugin(Manifest("CoreFixes")) {
 
             @SuppressLint("UseKtx")
             val uri = Uri.parse(urls[0].replace("&?", "&"))
-                ?.takeIf { it.path?.run {
-                    (endsWith(".gif") && animated)
-                        || endsWith(".webp")
-                        || endsWith(".avif")
-                } == true }
+                ?.takeIf { it.toString().isAnimatable }
                 ?: return@after
 
-            val filteredQueryKeys = uri.queryParameterNames.filter { it != "animated" }
-
-            val newUri = uri.buildUpon()
-                .clearQuery()
-                .apply { filteredQueryKeys.forEach { appendQueryParameter(it, uri.getQueryParameter(it)) } }
-                .appendQueryParameter("animated", animated.toString())
-                .build()
-
-            urls[0] = newUri.toString()
+            urls[0] = uri.asAnimatedWebp(animated).toString()
             params.result = urls
         }
     }
