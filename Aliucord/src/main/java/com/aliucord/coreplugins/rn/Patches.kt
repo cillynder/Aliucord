@@ -9,8 +9,13 @@ package com.aliucord.coreplugins.rn
 import android.content.Context
 import android.net.Uri
 import android.view.View
+import com.aliucord.Http
+import com.aliucord.Logger
+import com.aliucord.api.PatcherAPI
 import com.aliucord.api.rn.user.RNUserProfile
 import com.aliucord.patcher.*
+import com.aliucord.utils.GsonUtils
+import com.aliucord.utils.RxUtils
 import com.aliucord.wrappers.embeds.MessageEmbedWrapper.Companion.rawVideo
 import com.aliucord.wrappers.users.globalName
 import com.discord.api.channel.Channel
@@ -18,9 +23,7 @@ import com.discord.api.channel.`ChannelUtils$getDisplayName$1`
 import com.discord.api.message.embed.EmbedType
 import com.discord.api.message.embed.MessageEmbed
 import com.discord.api.role.GuildRoleColors
-import com.discord.api.sticker.Sticker
-import com.discord.api.sticker.StickerFormatType
-import com.discord.api.sticker.StickerPartial
+import com.discord.api.sticker.*
 import com.discord.api.user.User
 import com.discord.api.user.UserProfile
 import com.discord.app.AppFragment
@@ -30,11 +33,12 @@ import com.discord.models.member.GuildMember
 import com.discord.models.presence.Presence
 import com.discord.models.user.CoreUser
 import com.discord.models.user.MeUser
-import com.discord.stores.*
+import com.discord.stores.StoreStream
 import com.discord.utilities.auth.`AuthUtils$createDiscriminatorInputValidator$1`
 import com.discord.utilities.icon.IconUtils
 import com.discord.utilities.mg_recycler.MGRecyclerDataPayload
 import com.discord.utilities.mg_recycler.SingleTypePayload
+import com.discord.utilities.rest.RestAPI
 import com.discord.utilities.search.suggestion.entries.UserSuggestion
 import com.discord.utilities.user.UserUtils
 import com.discord.views.user.SettingsMemberView
@@ -47,23 +51,9 @@ import com.discord.widgets.user.*
 import com.discord.widgets.user.profile.UserProfileHeaderView
 import com.discord.widgets.user.profile.UserProfileHeaderViewModel
 import com.google.android.material.textfield.TextInputLayout
-import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonToken
 import de.robv.android.xposed.XC_MethodHook
-import rx.Observable
-import java.lang.reflect.Type
-import java.util.*
 import com.discord.models.user.User as ModelUser
-
-fun patchNextCallAdapter() {
-    val oldUserProfile = TypeToken.getParameterized(Observable::class.java, UserProfile::class.java).type
-    val newUserProfile = TypeToken.getParameterized(Observable::class.java, RNUserProfile::class.java).type
-
-    // nextCallAdapter https://github.com/square/retrofit/blob/c0fd64b5d3ddcc6665a16a4814c5b1596762305d/retrofit/src/main/java/retrofit2/Retrofit.java#L252
-    Patcher.addPatch(i0.y::class.java.getDeclaredMethod("a", Type::class.java, Array<Annotation>::class.java), PreHook {
-        if (it.args[0] == oldUserProfile) it.args[0] = newUserProfile
-    })
-}
 
 fun patchGlobalName() {
     val apiUser = User::class.java
@@ -235,11 +225,35 @@ fun patchUsername() {
     })
 }
 
-fun patchUserProfile() {
+fun patchUserProfile(logger: Logger, patcher: PatcherAPI) {
     /** discord doesn't check in [com.discord.widgets.user.WidgetUserMutualGuilds.Model] if mutualGuilds list is null */
-    Patcher.addPatch(UserProfile::class.java.getDeclaredMethod("d"), Hook {
-        if (it.result == null) it.result = Collections.EMPTY_LIST
-    })
+    patcher.after<UserProfile>("d") { param ->
+        if (param.result == null) param.result = listOf<Any>()
+    }
+
+    /** new props are required to show certain new badges */
+    patcher.instead<RestAPI>(
+        "userProfileGet",
+        Long::class.javaPrimitiveType!!,
+        Boolean::class.javaPrimitiveType!!,
+        Long::class.javaObjectType,
+    ) { (_, userId: Long, withMutualGuilds: Boolean, guildId: Long?) ->
+        RxUtils.create { subscriber ->
+            val req = Http.Request.newDiscordRNRequest(
+                "/users/${userId}/profile?with_mutual_guilds=${withMutualGuilds}"
+                    + guildId?.let { "&guild_id=${guildId}" }.orEmpty()
+            )
+            val res = req.execute()
+            if (!res.ok()) {
+                logger.errorToast("Error while fetching profile: ${res.statusCode}: ${res.statusMessage}", null)
+                subscriber.onError(Http.HttpException(req, res))
+            } else {
+                val data = res.json(GsonUtils.gsonRestApi, RNUserProfile::class.java)
+                subscriber.onNext(data)
+            }
+            subscriber.onCompleted()
+        }
+    }
 }
 
 fun patchStickers() {
