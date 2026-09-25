@@ -64,6 +64,7 @@ kotlin {
 
 dependencies {
     api(libs.aliuhook)
+    compileOnly(project(":Aliucord:stubs"))
     compileOnly(libs.appcompat)
     compileOnly(libs.constraintlayout)
     compileOnly(libs.discord)

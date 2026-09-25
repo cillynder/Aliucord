@@ -22,6 +22,7 @@ dependencyResolutionManagement {
 }
 
 include(":Aliucord")
+include(":Aliucord:stubs")
 include(":Injector")
 include(":patches")
 include(":kotlin-stdlib")

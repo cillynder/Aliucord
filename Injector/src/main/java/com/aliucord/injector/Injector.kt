@@ -79,6 +79,11 @@ private class Injector(private val appCtx: Application) {
     private val externalCustomCoreFile = externalBaseDir.resolve("Aliucord.zip")
 
     /**
+     * A dynamic dex built from smali patches
+     */
+    private val smaliDexFile = externalBaseDir.resolve("smali.dex")
+
+    /**
      * An official Aliucord core build downloaded by Injector.
      * This is inaccessible to users and is stored in internal cache.
      */
@@ -120,9 +125,16 @@ private class Injector(private val appCtx: Application) {
             return
         }
 
-        // Load the core
+        // Load smali dex
         val loadTarget = if (useCustomCore) internalCustomCoreFile else internalCoreFile
-        Logger.d("Adding Aliucord core ${loadTarget.absolutePath} the classpath...")
+        Logger.d("Adding smali dex ${loadTarget.absolutePath} to the classpath...")
+        addDexToClasspath(
+            dexFile = smaliDexFile,
+            classLoader = appCtx.classLoader,
+        )
+
+        // Then load core
+        Logger.d("Adding Aliucord core ${loadTarget.absolutePath} to the classpath...")
         addDexToClasspath(
             dexFile = loadTarget,
             classLoader = appCtx.classLoader,
