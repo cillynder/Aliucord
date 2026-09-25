@@ -245,8 +245,10 @@ fun patchUserProfile(logger: Logger, patcher: PatcherAPI) {
             )
             val res = req.execute()
             if (!res.ok()) {
-                logger.errorToast("Error while fetching profile: ${res.statusCode}: ${res.statusMessage}", null)
-                subscriber.onError(Http.HttpException(req, res))
+                if (res.statusCode != 404) {
+                    logger.errorToast("Error while fetching profile: ${res.statusCode}: ${res.statusMessage}", null)
+                    subscriber.onError(Http.HttpException(req, res))
+                }
             } else {
                 val data = res.json(GsonUtils.gsonRestApi, RNUserProfile::class.java)
                 subscriber.onNext(data)
