@@ -18,7 +18,6 @@ import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.utils.ViewUtils.addTo
 import com.aliucord.views.Button
 import com.aliucord.widgets.BottomSheet
-import com.aliucord.wrappers.users.primaryGuild
 import com.discord.api.commands.Application
 import com.discord.api.message.reaction.MessageReactionEmoji
 import com.discord.stores.StoreStream

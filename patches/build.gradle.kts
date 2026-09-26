@@ -1,8 +1,15 @@
-import com.aliucord.gradle.task.adb.DeployComponentTask
+
+import com.aliucord.gradle.task.adb.AdbTask
+import com.aliucord.gradle.task.adb.RestartAliucordTask
+import com.googlecode.d2j.dex.Dex2jar
+import com.googlecode.d2j.reader.DexFileReader
+import com.googlecode.d2j.reader.MultiDexFileReader
+import com.googlecode.d2j.util.zip.ZipFile
 import org.gradle.api.internal.file.FileOperations
 import org.gradle.kotlin.dsl.support.serviceOf
 import java.io.ByteArrayOutputStream
 import java.util.Properties
+import java.util.TreeMap
 
 version = "1.5.0"
 
@@ -15,6 +22,12 @@ plugins {
 android {
     namespace = "com.aliucord.patches"
     compileSdk = 36
+
+    androidComponents {
+        beforeVariants(selector().withBuildType("release")) { variantBuilder ->
+            variantBuilder.enable = false
+        }
+    }
 }
 
 // ------ Dependencies ------ //
@@ -189,7 +202,7 @@ tasks.register("disassembleWithPatches") {
     dependsOn(disassembleInternal, copyDisassembled, applyPatches)
 }
 
-tasks.register<JavaExec>("testPatches") {
+val assembleDex by tasks.register<JavaExec>("assembleDex") {
     group = TASK_GROUP
     mustRunAfter(applyPatches) // When applyPatches is also being run, it must come before
 
@@ -209,6 +222,25 @@ tasks.register<JavaExec>("testPatches") {
     inputs.files(patchFiles, smaliFiles)
     outputs.file(outputDex)
 
+    // Add version metadata
+    val metadata = File(temporaryDir, "PatchesMetadata.smali")
+    metadata.writeText("""
+        .class public Lcom/aliucord/patches/PatchesMetadata;
+        .super Ljava/lang/Object;
+        .source "PatchesMetadata.java"
+
+        .field public static final version:Ljava/lang/String;
+
+        .method static constructor <clinit>()V
+            .registers 1
+            const-string v0, "$version"
+            invoke-virtual {v0}, Ljava/lang/String;->toString()Ljava/lang/String;
+            move-result-object v0
+            sput-object v0, Lcom/aliucord/patches/PatchesMetadata;->version:Ljava/lang/String;
+            return-void
+        .end method
+    """.trimIndent())
+
     // javaexec config
     classpath(smaliTools)
     jvmArgs = listOf("-Xmx2G")
@@ -217,7 +249,7 @@ tasks.register<JavaExec>("testPatches") {
         "assemble",
         "--verbose",
         "--output", outputDex.get().asFile.absolutePath,
-    ) + smaliFiles.map { it.absolutePath }
+    ) + smaliFiles.map { it.absolutePath } + metadata.absolutePath
 
     doFirst {
         if (!smaliDir.exists()) {
@@ -227,6 +259,11 @@ tasks.register<JavaExec>("testPatches") {
     doLast {
         logger.lifecycle("Successfully reassembled dex: {}", outputDex.get().asFile.absolutePath)
     }
+}
+
+tasks.register("testPatches") {
+    group = TASK_GROUP
+    dependsOn(assembleDex)
 }
 
 val packageTask by tasks.register("package", Zip::class) {
@@ -241,12 +278,29 @@ val packageTask by tasks.register("package", Zip::class) {
     include("**/*.patch")
 }
 
-tasks.register<DeployComponentTask>("deployWithAdb") {
+abstract class DeployPatchesTask : AdbTask() {
+    private val DIR = "/storage/emulated/0/Aliucord";
+
+    @get:InputFile
+    abstract val deployFile: RegularFileProperty
+
+    @TaskAction
+    fun deploy() {
+        runAdbShell("mkdir", "-v", "-p", "'$DIR'")
+        runAdbCommand("push", deployFile.get().asFile.absolutePath, "$DIR/smali.dex")
+        logger.lifecycle("Deployed smali dex to configured devices")
+    }
+}
+
+val restartAliucordTask by tasks.register<RestartAliucordTask>("restartAliucord") {
     group = TASK_GROUP
-    componentType = "patches"
-    componentVersion = project.version.toString()
-    componentFile.set(packageTask.outputs.files.singleFile)
-    dependsOn(packageTask)
+}
+
+tasks.register<DeployPatchesTask>("deployWithAdb") {
+    group = TASK_GROUP
+    dependsOn(assembleDex)
+    deployFile = assembleDex.outputs.files.singleFile
+    finalizedBy(restartAliucordTask)
 }
 
 tasks.register("writePatches") {
@@ -325,4 +379,42 @@ tasks.register("writePatches") {
                 .writeText(cleanDiff)
         }
     }
+}
+
+val patchedJar = tasks.register("patchedJar") {
+    group = TASK_GROUP
+    dependsOn(assembleDex)
+
+    val disc = discord.get().singleFile
+    val inputDex = layout.buildDirectory.file("patched.dex")
+    val outputJarFile = layout.buildDirectory.file("${disc.nameWithoutExtension}_patched_${version}.jar")
+
+    inputs.files(inputDex, disc)
+    outputs.file(outputJarFile)
+
+    doLast {
+        val dexFileReaders = TreeMap<String, DexFileReader>()
+        ZipFile(disc.readBytes()).use { zipFile ->
+            for (e in zipFile.entries()) {
+                val entryName: String = e.getName()
+                if (entryName.startsWith("classes") && entryName.endsWith(".dex")) {
+                    if (!dexFileReaders.containsKey(entryName)) { // only the first one
+                        dexFileReaders[entryName] = DexFileReader(zipFile.getInputStream(e).readBytes())
+                    }
+                }
+            }
+        }
+        val aug = DexFileReader(inputDex.get().asFile.readBytes())
+        val reader = MultiDexFileReader(listOf(aug) + dexFileReaders.values)
+
+        Dex2jar.from(reader)
+            .skipDebug(false)
+            .topoLogicalSort()
+            .noCode(false)
+            .to(outputJarFile.get().asFile.toPath())
+    }
+}
+
+artifacts {
+    add("default", patchedJar)
 }

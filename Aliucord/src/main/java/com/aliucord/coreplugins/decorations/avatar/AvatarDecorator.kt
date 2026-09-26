@@ -16,7 +16,6 @@ import com.aliucord.utils.ViewUtils.padding
 import com.aliucord.utils.ViewUtils.setPadding
 import com.aliucord.utils.ViewUtils.topPadding
 import com.aliucord.utils.accessField
-import com.aliucord.wrappers.users.avatarDecorationData
 import com.discord.api.sticker.BaseSticker
 import com.discord.api.user.AvatarDecoration
 import com.discord.databinding.WidgetChannelMembersListItemUserBinding

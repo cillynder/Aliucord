@@ -31,8 +31,6 @@ import com.aliucord.wrappers.ChannelWrapper.Companion.recipients
 import com.aliucord.wrappers.embeds.FieldWrapper.Companion.name
 import com.aliucord.wrappers.embeds.FieldWrapper.Companion.value
 import com.aliucord.wrappers.embeds.MessageEmbedWrapper.Companion.rawFields
-import com.aliucord.wrappers.messages.poll
-import com.aliucord.wrappers.users.globalName
 import com.discord.api.channel.Channel
 import com.discord.api.channel.ChannelUtils
 import com.discord.databinding.WidgetChatListActionsBinding

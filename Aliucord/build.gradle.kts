@@ -62,12 +62,14 @@ kotlin {
     }
 }
 
+val patches = project(":patches")
+evaluationDependsOn(":patches")
 dependencies {
     api(libs.aliuhook)
     compileOnly(project(":Aliucord:stubs"))
     compileOnly(libs.appcompat)
     compileOnly(libs.constraintlayout)
-    compileOnly(libs.discord)
+    compileOnly(files(patches.tasks.named("patchedJar")))
     compileOnly(libs.kotlin.stdlib)
     compileOnly(libs.material)
     compileOnly(project(":Injector")) // Needed to access certain stubs

@@ -17,7 +17,6 @@ import com.aliucord.patcher.*
 import com.aliucord.utils.GsonUtils
 import com.aliucord.utils.RxUtils
 import com.aliucord.wrappers.embeds.MessageEmbedWrapper.Companion.rawVideo
-import com.aliucord.wrappers.users.globalName
 import com.discord.api.channel.Channel
 import com.discord.api.channel.`ChannelUtils$getDisplayName$1`
 import com.discord.api.message.embed.EmbedType

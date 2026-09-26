@@ -1,9 +1,9 @@
 package com.aliucord.updater
 
 import com.aliucord.Logger
-import com.aliucord.utils.GsonUtils
+import com.aliucord.patches.PatchesMetadata
+import com.aliucord.utils.*
 import com.aliucord.utils.GsonUtils.fromJson
-import com.aliucord.utils.SemVer
 
 /**
  * Version checking for various install-time utilities that were used to install the app.
@@ -67,7 +67,13 @@ object ManagerBuild {
         val customManager: Boolean,
         val managerVersion: SemVer,
         val injectorVersion: SemVer,
-        val patchesVersion: SemVer,
+        @SerializedName("patchesVersion") val patchesV1Version: SemVer,
         val kotlinVersion: SemVer? = null,
-    )
+    ) {
+        val patchesVersion get() = try {
+            SemVer.parse(PatchesMetadata.version)
+        } catch (e: NoClassDefFoundError) {
+            patchesV1Version
+        }
+    }
 }

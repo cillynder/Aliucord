@@ -28,7 +28,6 @@ import com.aliucord.utils.RxUtils.ui
 import com.aliucord.utils.ViewUtils.findViewById
 import com.aliucord.wrappers.ChannelWrapper.Companion.id
 import com.aliucord.wrappers.embeds.MessageEmbedWrapper
-import com.aliucord.wrappers.messages.flags
 import com.discord.api.auth.OAuthScope
 import com.discord.api.channel.Channel
 import com.discord.api.message.attachment.MessageAttachment
