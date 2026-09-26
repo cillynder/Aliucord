@@ -20,17 +20,19 @@ jobs:
       coreDeploy: ${{ steps.compare.outputs.coreDeploy }}
       patchesDeploy: ${{ steps.compare.outputs.patchesDeploy }}
       injectorDeploy: ${{ steps.compare.outputs.injectorDeploy }}
+      kotlinDeploy: ${{ steps.compare.outputs.kotlinDeploy }}
       coreVersion: ${{ steps.compare.outputs.coreVersion }}
       patchesVersion: ${{ steps.compare.outputs.patchesVersion }}
       injectorVersion: ${{ steps.compare.outputs.injectorVersion }}
+      kotlinVersion: ${{ steps.compare.outputs.kotlinVersion }}
     steps:
       - name: Checkout src
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: src
 
       - name: Checkout builds
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: builds
           path: builds
@@ -39,27 +41,32 @@ jobs:
         id: compare
         run: |
           # Extract new versions
-          coreVersion="$(cat $GITHUB_WORKSPACE/src/Aliucord/build.gradle.kts | grep -E 'version = "' | cut -d \" -f 2)"
-          patchesVersion="$(cat $GITHUB_WORKSPACE/src/patches/build.gradle.kts | grep -E 'version = "' | cut -d \" -f 2)"
-          injectorVersion="$(cat $GITHUB_WORKSPACE/src/Injector/build.gradle.kts | grep -E 'version = "' | cut -d \" -f 2)"
+          coreVersion="$(cat $GITHUB_WORKSPACE/src/Aliucord/build.gradle.kts | grep -E 'version = "' | cut -d '"' -f 2)"
+          patchesVersion="$(cat $GITHUB_WORKSPACE/src/patches/build.gradle.kts | grep -E 'version = "' | cut -d '"' -f 2)"
+          injectorVersion="$(cat $GITHUB_WORKSPACE/src/Injector/build.gradle.kts | grep -E 'version = "' | cut -d '"' -f 2)"
+          kotlinVersion="$(cat $GITHUB_WORKSPACE/src/gradle/libs.versions.toml | grep -E 'kotlin-stdlib = "' | cut -d '"' -f 2)"
 
           # Extract current deployed versions
           coreVersionOld="$(jq -r '.coreVersion' $GITHUB_WORKSPACE/builds/data.json)"
           patchesVersionOld="$(jq -r '.patchesVersion' $GITHUB_WORKSPACE/builds/data.json)"
           injectorVersionOld="$(jq -r '.injectorVersion' $GITHUB_WORKSPACE/builds/data.json)"
+          kotlinVersionOld="$(jq -r '.kotlinVersion' $GITHUB_WORKSPACE/builds/data.json)"
 
           # Determine whether deployments are required
           coreDeploy=$([ "$coreVersion" != "$coreVersionOld" ] && echo true || echo false)
           patchesDeploy=$([ "$patchesVersion" != "$patchesVersionOld" ] && echo true || echo false)
           injectorDeploy=$([ "$injectorVersion" != "$injectorVersionOld" ] && echo true || echo false)
+          kotlinDeploy=$([ "$kotlinVersion" != "$kotlinVersionOld" ] && echo true || echo false)
 
           # Write step output
           echo "coreVersion=$coreVersion" >> "$GITHUB_OUTPUT"
           echo "patchesVersion=$patchesVersion" >> "$GITHUB_OUTPUT"
           echo "injectorVersion=$injectorVersion" >> "$GITHUB_OUTPUT"
+          echo "kotlinVersion=$kotlinVersion" >> "$GITHUB_OUTPUT"
           echo "coreDeploy=$coreDeploy" >> "$GITHUB_OUTPUT"
           echo "patchesDeploy=$patchesDeploy" >> "$GITHUB_OUTPUT"
           echo "injectorDeploy=$injectorDeploy" >> "$GITHUB_OUTPUT"
+          echo "kotlinDeploy=$kotlinDeploy" >> "$GITHUB_OUTPUT"
 
   build:
     runs-on: ubuntu-latest
@@ -70,34 +77,39 @@ jobs:
       contents: read
     steps:
       - name: Checkout src
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
-          cache-read-only: ${{ github.event_name == 'pull_request' }} # Don't write cache for pull requests
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
           cache-write-only: ${{ needs.inspect.outputs.coreDeploy == 'true' }} # Disable using cache when deploying
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        # https://github.com/android-actions/setup-android/issues/537
+        with:
+          packages: 'platform-tools'
 
       - name: Build project
         env:
           RELEASE: ${{ needs.inspect.outputs.coreDeploy == 'true' }}
         run: |
           chmod +x gradlew
-          ./gradlew --stacktrace :Aliucord:make :Injector:make :patches:package :patches:disassembleWithPatches :patches:testPatches
+          ./gradlew --stacktrace \
+            :Aliucord:make :Injector:make :kotlin-stdlib:make \
+            :patches:package :patches:disassembleWithPatches :patches:testPatches
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build
           if-no-files-found: error
@@ -105,6 +117,7 @@ jobs:
             ${{ github.workspace }}/Aliucord/build/outputs/Aliucord.zip
             ${{ github.workspace }}/Injector/build/outputs/Injector.dex
             ${{ github.workspace }}/patches/build/outputs/patches.zip
+            ${{ github.workspace }}/kotlin-stdlib/build/outputs/kotlin.dex
 
       - name: Deploy documentation
         # Refer to comment on maven job as to why repository is explicitly checked
@@ -164,18 +177,18 @@ jobs:
       contents: write
     steps:
       - name: Checkout src
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: src
 
       - name: Checkout builds
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: builds
           path: builds
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: build
           path: artifacts
@@ -189,13 +202,15 @@ jobs:
           [ "${{ needs.inspect.outputs.coreDeploy }}" == "true" ] && cp $GITHUB_WORKSPACE/artifacts/Aliucord.zip $GITHUB_WORKSPACE/builds
           [ "${{ needs.inspect.outputs.injectorDeploy }}" == "true" ] && cp $GITHUB_WORKSPACE/artifacts/Injector.dex $GITHUB_WORKSPACE/builds
           [ "${{ needs.inspect.outputs.patchesDeploy }}" == "true" ] && cp $GITHUB_WORKSPACE/artifacts/patches.zip $GITHUB_WORKSPACE/builds
+          [ "${{ needs.inspect.outputs.kotlinDeploy }}" == "true" ] && cp $GITHUB_WORKSPACE/artifacts/kotlin.dex $GITHUB_WORKSPACE/builds
 
           # Write versions to data.json
           # `aliucordHash` is kept to force old builds to update (when versions were tied to a commit hash)
-          jq '. + { coreVersion: $cv, injectorVersion: $iv, patchesVersion: $pv, aliucordHash: "0000000" }' \
+          jq '. + { coreVersion: $cv, injectorVersion: $iv, patchesVersion: $pv, kotlinVersion: $kv, aliucordHash: "0000000" }' \
              --arg cv "${{ needs.inspect.outputs.coreVersion }}" \
              --arg iv "${{ needs.inspect.outputs.injectorVersion }}" \
              --arg pv "${{ needs.inspect.outputs.patchesVersion }}" \
+             --arg kv "${{ needs.inspect.outputs.kotlinVersion }}" \
              $GITHUB_WORKSPACE/src/.assets/data.json > $GITHUB_WORKSPACE/builds/data.json
 
           # Commit and push
@@ -240,19 +255,21 @@ jobs:
       contents: read
     steps:
       - name: Checkout src
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
+          dependency-graph: generate-and-submit
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
           cache-write-only: true
 
       - name: Build & Publish to Maven releases

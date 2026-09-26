@@ -15,8 +15,6 @@ internal object DecorationsSettings {
 
     private val enableAvatarDecorationDelegate = settings.delegate("enableAvatarDecorations", true)
     val enableAvatarDecoration by enableAvatarDecorationDelegate
-    private val enableDisplayNamesDelegate = settings.delegate("enableDisplayNames", true)
-    val enableDisplayNames by enableDisplayNamesDelegate
     private val enableGuildTagsDelegate = settings.delegate("enableGuildTags", true)
     val enableGuildTags by enableGuildTagsDelegate
     private val enableNameplatesDelegate = settings.delegate("enableNameplates", true)
@@ -27,7 +25,6 @@ internal object DecorationsSettings {
             super.onViewCreated(view, bundle)
 
             createSetting("Show avatar decorations", enableAvatarDecorationDelegate).addTo(linearLayout)
-            createSetting("Show display names", enableDisplayNamesDelegate).addTo(linearLayout)
             createSetting("Show nameplates", enableNameplatesDelegate).addTo(linearLayout)
             createSetting("Show server tags", enableGuildTagsDelegate).addTo(linearLayout)
         }

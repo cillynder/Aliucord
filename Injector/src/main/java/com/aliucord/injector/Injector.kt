@@ -8,201 +8,376 @@ package com.aliucord.injector
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.Context
+import android.app.Application
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.*
-import android.util.Log
-import android.widget.Toast
+import android.provider.Settings
+import androidx.activity.result.contract.ActivityResultContracts
+import com.discord.app.App
 import com.discord.app.AppActivity
-import com.discord.stores.StoreClientVersion
-import com.discord.stores.StoreStream
-import dalvik.system.BaseDexClassLoader
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import org.json.JSONObject
-import java.io.*
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.system.exitProcess
 
-const val LOG_TAG = "Injector"
-private const val DATA_URL = "https://builds.aliucord.com/data.json"
-private const val DEX_URL = "https://builds.aliucord.com/Aliucord.zip"
-
-@Suppress("DEPRECATION")
-private val BASE_DIRECTORY = File(Environment.getExternalStorageDirectory().absolutePath, "Aliucord")
+/**
+ * External settings key controlling whether custom core is enabled.
+ */
 private const val ALIUCORD_FROM_STORAGE_KEY = "AC_from_storage"
 
-private var unhook: XC_MethodHook.Unhook? = null
+private val applicationInitialized = AtomicBoolean(false)
+private val activityInitialized = AtomicBoolean(false)
 
-fun init() {
+/**
+ * The main entrypoint, invoked by the overridden Discord class.
+ * This is invoked shortly after [App.onCreate] starts executing.
+ */
+internal fun init(appCtx: Application) {
+    if (applicationInitialized.getAndSet(true)) return
+
+    Logger.init()
+    Logger.d("Started Aliucord Injector!")
+
     try {
-        Log.d(LOG_TAG, "Hooking AppActivity.onCreate...")
-        unhook = XposedBridge.hookMethod(AppActivity::class.java.getDeclaredMethod("onCreate", Bundle::class.java), object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
-                init(param.thisObject as AppActivity)
-                unhook!!.unhook()
-                unhook = null
-            }
-        })
-    } catch (th: Throwable) {
-        Log.e(LOG_TAG, "Failed to initialize Aliucord", th)
+        if (!XposedBridge.disableHiddenApiRestrictions()) {
+            Logger.w("Failed to disable hidden api restrictions")
+        }
+        if (!XposedBridge.disableProfileSaver()) {
+            Logger.w("Failed to disable profile saver")
+        }
+
+        pruneArtProfile(appCtx)
+    } catch (e: Exception) {
+        Logger.e("Failed to setup environment", e)
+    }
+
+    try {
+        Injector(appCtx).onApplicationCreate()
+    } catch (t: Throwable) {
+        Logger.errorToast(appCtx, "Failed to run Aliucord Injector", t)
     }
 }
 
-private fun error(ctx: Context, msg: String, th: Throwable?) {
-    Logger.e(msg, th)
-    Handler(Looper.getMainLooper()).post { Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show() }
-}
+private class Injector(private val appCtx: Application) {
+    /**
+     * Aliucord's base directory in external storage that's accessible to the user, storing settings and plugins.
+     */
+    private val externalBaseDir = Environment.getExternalStorageDirectory().resolve("Aliucord")
 
-private fun init(appActivity: AppActivity) {
-    if (!XposedBridge.disableProfileSaver())
-        Logger.w("Failed to disable profile saver")
+    /**
+     * Aliucord's main core settings file. This is used to determine whether a custom core is enabled.
+     */
+    private val externalSettingsFile = externalBaseDir.resolve("settings/Aliucord.json")
 
-    if (!XposedBridge.disableHiddenApiRestrictions())
-        Logger.w("Failed to disable hidden api restrictions")
+    /**
+     * A custom core that was built and deployed to this device, accessible to the user.
+     */
+    private val externalCustomCoreFile = externalBaseDir.resolve("Aliucord.zip")
 
-    if (!pruneArtProfile(appActivity))
-        Logger.w("Failed to prune art profile")
+    /**
+     * An official Aliucord core build downloaded by Injector.
+     * This is inaccessible to users and is stored in internal cache.
+     */
+    private val internalCoreFile = appCtx.codeCacheDir.resolve("Aliucord.zip")
 
-    val dexFile = appActivity.codeCacheDir.resolve("Aliucord.zip")
-    val customDexFile = appActivity.codeCacheDir.resolve("Aliucord.custom.zip")
+    /**
+     * A copy of [externalCustomCoreFile], to prevent corruption while Aliucord is already running.
+     * This is inaccessible to users and stored in internal cache.
+     */
+    private val internalCustomCoreFile = appCtx.codeCacheDir.resolve("Aliucord.custom.zip")
 
-    Logger.d("Initializing Aliucord...")
-    try {
-        val useCustomDex = useCustomDex(appActivity)
-
-        // Copy core bundle from external storage to internal cache
-        if (useCustomDex) {
-            File(BASE_DIRECTORY, "Aliucord.zip").copyTo(customDexFile, overwrite = true)
+    /**
+     * This is invoked when [App.onCreate] is called, triggering a possible early initialization of the Aliucord core
+     * if permissions have been granted and the core has already been downloaded during a prior launch.
+     */
+    fun onApplicationCreate() {
+        if (!isPermissionsGranted()) {
+            restoreCoreFlow()
+            return
         }
 
-        // Download new core
-        if (!useCustomDex && !dexFile.exists()) {
-            val successRef = AtomicBoolean(true)
-            Thread {
-                try {
-                    Logger.d("Checking local Discord version...")
-                    val storeClientVersionField = StoreStream::class.java.getDeclaredField("clientVersion")
-                        .apply { isAccessible = true }
-                    val clientVersionField = StoreClientVersion::class.java.getDeclaredField("clientVersion")
-                        .apply { isAccessible = true }
+        Logger.d("Checking custom core settings")
+        val useCustomCore = isUsingCustomCore()
 
-                    val collector = StoreStream.Companion.`access$getCollector$p`(StoreStream.Companion)
-                    val storeClientVersion = storeClientVersionField[collector]
-                    val version = (clientVersionField[storeClientVersion] as Int)
-                    Logger.d("Retrieved local Discord version: $version")
+        // Delete old custom cores copied to code cache if they exist
+        if (!useCustomCore) {
+            internalCustomCoreFile.delete()
+        } else {
+            Logger.d("Using custom Aliucord core!")
+        }
 
-                    Logger.d("Fetching latest Discord version...")
-                    val conn = URL(DATA_URL).openConnection() as HttpURLConnection
-                    val remoteVersion = JSONObject(conn.inputStream.bufferedReader().readText()).getInt("versionCode")
-                    Logger.d("Retrieved remote Discord version: $remoteVersion")
+        // Copy core bundle from external storage to internal cache to prevent deletion while running
+        if (useCustomCore) {
+            externalCustomCoreFile.copyTo(internalCustomCoreFile, overwrite = true)
+        }
+        // Download new stable core
+        else if (!internalCoreFile.exists()) {
+            restoreCoreFlow()
+            return
+        }
 
-                    if (remoteVersion > version) {
-                        error(appActivity, "Your base Discord is outdated. Please reinstall using the Installer.", null)
-                        successRef.set(false)
-                    } else downloadLatestAliucordDex(dexFile)
-                } catch (e: Throwable) {
-                    error(appActivity, "Failed to install aliucord :(", e)
-                    successRef.set(false)
-                }
-            }.run {
-                start()
-                join()
+        // Load the core
+        val loadTarget = if (useCustomCore) internalCustomCoreFile else internalCoreFile
+        Logger.d("Adding Aliucord core ${loadTarget.absolutePath} the classpath...")
+        addDexToClasspath(
+            dexFile = loadTarget,
+            classLoader = appCtx.classLoader,
+        )
+
+        // Start the loaded core
+        try {
+            startAliucord()
+        } catch (t: Throwable) {
+            Logger.errorToast(appCtx, "Failed to start Aliucord!", t)
+
+            try {
+                // Delete cached files so it is redownloaded the next time
+                internalCoreFile.delete()
+                internalCustomCoreFile.delete()
+            } catch (e: Throwable) {
+                Logger.e("Failed to delete cached core files", e)
             }
-            if (!successRef.get()) return
+
+            if (useCustomCore && disableCustomCore()) {
+                Logger.errorToast(appCtx, "Disabled loading custom core!")
+            }
+        }
+    }
+
+    /**
+     * The "restoration" flow of Aliucord that waits for the user to launch an activity,
+     * grant permissions, and then download the core and forcefully restart the process
+     * to allow for early initialization of the Aliucord core.
+     */
+    fun restoreCoreFlow() {
+        hookActivityOnCreate { activity, unhook ->
+            val permissionsResult = ::requestPermissions.takeIf { !isPermissionsGranted() }?.invoke(activity)
+
+            Thread {
+                if (permissionsResult?.get() == false)
+                    return@Thread
+
+                // Unhook only after permission result retrieved
+                unhook.unhook()
+
+                if (!isUsingCustomCore() && !installCore())
+                    return@Thread
+
+                restartAliucord()
+            }.start()
+        }
+    }
+
+    /**
+     * Requests the necessary storage permissions and returns a future whether they were granted.
+     * This should be called on or before [AppActivity.onCreate] before the lifecycle is RESUMED.
+     */
+    @SuppressLint("UseKtx")
+    fun requestPermissions(activity: AppActivity): CompletableFuture<Boolean> {
+        val future = CompletableFuture<Boolean>()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val userMsg = "Aliucord requires the 'All files access' permission to use its folder in Internal Storage!"
+            appCtx.showToast(userMsg)
+
+            activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                val granted = Environment.isExternalStorageManager()
+                if (!granted) {
+                    appCtx.showToast(userMsg)
+                    Logger.e("User did not grant MANAGE_EXTERNAL_STORAGE permission!")
+                }
+                future.complete(granted)
+            }.launch(
+                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    .setData(Uri.parse("package:${activity.packageName}"))
+            )
+        } else {
+            val userMsg = "Aliucord requires storage permissions to use its folder in Internal Storage!"
+            appCtx.showToast(userMsg)
+
+            activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (!granted) {
+                    appCtx.showToast(userMsg)
+                    Logger.e("User did not grant WRITE_EXTERNAL_STORAGE permission!")
+                }
+                future.complete(granted)
+            }.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
 
-        Logger.d("Adding Aliucord to the classpath...")
-        addDexToClasspath(if (useCustomDex) customDexFile else dexFile, appActivity.classLoader)
+        return future
+    }
+
+    /**
+     * Performs the whole download flow of obtaining the latest core build.
+     *
+     * This first checks whether the current installation is compatible with the
+     * latest core and prompts to reinstall with Manager when possible.
+     */
+    private fun installCore(): Boolean {
+        return try {
+            val data = fetchBuildData()
+            Logger.d("Retrieved remote build data: $data")
+
+            if (data.discordVersion > com.discord.BuildConfig.VERSION_CODE ||
+                KotlinVersion.CURRENT < data.kotlinVersionParsed
+            ) {
+                // TODO: launch aliucord manager reinstall
+                Logger.errorToast(appCtx, "Your base Discord is outdated. Please reinstall using Aliucord Manager.")
+                false
+            } else {
+                downloadLatestCore(outputFile = internalCoreFile)
+                true
+            }
+        } catch (e: Throwable) {
+            Logger.errorToast(appCtx, "Failed to download latest Aliucord core!", e)
+            false
+        }
+    }
+
+    // -------- Starting Aliucord -------- //
+    /**
+     * Finds the correct Aliucord core entrypoint and runs it.
+     */
+    private fun startAliucord() {
+        Logger.d("Obtaining Aliucord core entrypoints...")
+
+        try {
+            val c = Class.forName("com.aliucord.Main")
+            val onApplicationInit = c.getDeclaredMethod("onApplicationInit", Application::class.java)
+
+            Logger.d("Starting early Aliucord core...")
+            onApplicationInit.invoke(null, appCtx)
+            Logger.d("Finished early starting Aliucord")
+        } catch (_: NoSuchMethodException) {
+            startLegacyAliucord()
+        }
+    }
+
+    /**
+     * Finds the old Aliucord core entrypoints and runs it.
+     * Old Aliucord core did not support early init, so we wait for Activity creation.
+     */
+    private fun startLegacyAliucord() {
+        Logger.d("Obtaining Aliucord core legacy entrypoints...")
         val c = Class.forName("com.aliucord.Main")
         val preInit = c.getDeclaredMethod("preInit", AppActivity::class.java)
         val init = c.getDeclaredMethod("init", AppActivity::class.java)
 
-        Logger.d("Invoking main Aliucord entry point...")
-        preInit.invoke(null, appActivity)
-        init.invoke(null, appActivity)
-        Logger.d("Finished initializing Aliucord")
-    } catch (th: Throwable) {
-        error(appActivity, "Failed to initialize Aliucord", th)
-        try {
-            // Delete cached file so it is reinstalled the next time
-            dexFile.delete()
-            customDexFile.delete()
-        } catch (_: Throwable) {
-            // Ignore
+        hookActivityOnCreate { activity, unhook ->
+            unhook.unhook()
+            Logger.d("Starting Aliucord core...")
+            preInit.invoke(null, activity)
+            init.invoke(null, activity)
+            Logger.d("Finished starting Aliucord")
         }
     }
-}
 
-/**
- * Checks if app has permission for storage and if so checks settings as to whether
- * using custom/local core bundle is enable .
- */
-private fun useCustomDex(appActivity: AppActivity): Boolean {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        if (!Environment.isExternalStorageManager())
-            return false
-    } else if (appActivity.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-        return false
-    }
+    // -------- Utilities -------- //
 
-    val settingsFile = File(BASE_DIRECTORY, "settings/Aliucord.json")
-    val localDexFile = File(BASE_DIRECTORY, "Aliucord.zip")
-    if (!settingsFile.exists() || !localDexFile.exists()) return false
-
-    val useLocalDex = settingsFile.readText()
-        .let { it.isNotEmpty() && JSONObject(it).optBoolean(ALIUCORD_FROM_STORAGE_KEY, false) }
-    if (!useLocalDex) return false
-
-    Logger.d("Loading dex from ${localDexFile.absolutePath}")
-    return true
-}
-
-/**
- * Public so it can be manually triggered from Aliucord to update itself
- * outputFile should be new File(context.getCodeCacheDir(), "Aliucord.zip");
- */
-@Throws(IOException::class)
-fun downloadLatestAliucordDex(outputFile: File) {
-    Logger.d("Downloading Aliucord.zip from $DEX_URL...")
-    val conn = URL(DEX_URL).openConnection() as HttpURLConnection
-    conn.inputStream.use { it.copyTo(FileOutputStream(outputFile)) }
-    Logger.d("Finished downloading Aliucord.zip")
-}
-
-@SuppressLint("DiscouragedPrivateApi") // this private api seems to be stable, thanks to facebook who use it in the facebook app
-@Throws(Throwable::class)
-private fun addDexToClasspath(dex: File, classLoader: ClassLoader) {
-    Logger.d("Adding Aliucord to the classpath...")
-
-    // https://android.googlesource.com/platform/libcore/+/58b4e5dbb06579bec9a8fc892012093b6f4fbe20/dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java#59
-    val pathListField = BaseDexClassLoader::class.java.getDeclaredField("pathList")
-        .apply { isAccessible = true }
-    val pathList = pathListField[classLoader]!!
-    val addDexPath = pathList.javaClass.getDeclaredMethod("addDexPath", String::class.java, File::class.java)
-        .apply { isAccessible = true }
-    addDexPath.invoke(pathList, dex.absolutePath, null)
-    Logger.d("Successfully added Aliucord to the classpath")
-}
-
-/**
- * Try to prevent method inlining by deleting the usage profile used by AOT compilation
- * https://source.android.com/devices/tech/dalvik/configure#how_art_works
- */
-private fun pruneArtProfile(ctx: Context): Boolean {
-    Logger.d("Pruning ART usage profile...")
-    val profile = File("/data/misc/profiles/cur/0/" + ctx.packageName + "/primary.prof")
-    if (!profile.exists()) {
-        return true
-    }
-    if (profile.length() > 0) {
-        try {
-            // Delete file contents
-            FileOutputStream(profile).close()
-        } catch (ignored: Throwable) {
-            return false
+    /**
+     * Checks whether external storage write permissions have been granted.
+     */
+    private fun isPermissionsGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            appCtx.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         }
     }
-    return true
+
+    /**
+     * Forcefully restarts the Aliucord app process.
+     */
+    private fun restartAliucord(): Nothing {
+        Logger.i("Force restarting Aliucord...")
+        try {
+            val intent = appCtx.packageManager.getLaunchIntentForPackage(appCtx.packageName)
+                .let { Intent.makeRestartActivityTask(it?.component) }
+
+            appCtx.startActivity(intent)
+        } catch (e: Exception) {
+            Logger.e("Failed to restart Aliucord!", e)
+        } finally {
+            exitProcess(0)
+        }
+    }
+
+    /**
+     * Checks whether using an external custom Aliucord core is possible and enabled.
+     */
+    private fun isUsingCustomCore(): Boolean {
+        val settings = try {
+            if (!externalSettingsFile.exists()) {
+                Logger.d("Aliucord settings file missing, skipping custom core check...")
+                return false
+            }
+            if (!externalCustomCoreFile.exists()) {
+                Logger.d("Aliucord custom core missing, skipping custom core check...")
+                return false
+            }
+
+            JSONObject(externalSettingsFile.readText())
+        } catch (e: Exception) {
+            // This may include permission errors
+            Logger.d("Failed to read external Aliucord settings, skipping custom core check...", e)
+            return false
+        }
+
+        return settings.optBoolean(ALIUCORD_FROM_STORAGE_KEY, false)
+    }
+
+    /**
+     * Tries to disable the setting that enables using a custom external Aliucord core, if possible.
+     * If permissions were not granted to read/write to the external settings, then this fails silently.
+     */
+    private fun disableCustomCore(): Boolean {
+        return try {
+            if (!externalSettingsFile.exists()) return true
+
+            val settings = JSONObject(externalSettingsFile.readText())
+            if (!settings.optBoolean(ALIUCORD_FROM_STORAGE_KEY, false)) {
+                return true
+            }
+
+            settings.put(ALIUCORD_FROM_STORAGE_KEY, false)
+            externalSettingsFile.writeText(settings.toString())
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Attempts to hook [AppActivity.onCreate] if it has not been invoked yet and run a [callback]
+     * when it is executed. This allows for an unlimited amount of callbacks to be registered prior to
+     * the activity initializing, however disallows hooking once it's initialized. As such, it should not
+     * be used multiple times throughout different parts of the same initialization flow.
+     */
+    private fun hookActivityOnCreate(callback: (AppActivity, XC_MethodHook.Unhook) -> Unit) {
+        Logger.d("Hooking AppActivity.onCreate")
+
+        if (activityInitialized.get()) {
+            throw IllegalStateException("Cannot hook AppActivity.onCreate when it was already invoked!")
+        }
+
+        try {
+            var unhook: XC_MethodHook.Unhook? = null
+            unhook = XposedBridge.hookMethod(
+                AppActivity::class.java.getDeclaredMethod("onCreate", Bundle::class.java),
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        activityInitialized.set(true)
+                        callback(param.thisObject as AppActivity, unhook!!)
+                    }
+                },
+            )
+        } catch (e: Exception) {
+            Logger.errorToast(appCtx, "Failed to initialize Aliuhook!", e)
+            throw e
+        }
+    }
 }

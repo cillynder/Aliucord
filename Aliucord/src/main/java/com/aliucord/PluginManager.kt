@@ -11,6 +11,7 @@ import android.content.res.AssetManager
 import android.content.res.Resources
 import com.aliucord.Utils.appContext
 import com.aliucord.coreplugins.*
+import com.aliucord.coreplugins.accountstanding.AccountStanding
 import com.aliucord.coreplugins.badges.DiscordBadges
 import com.aliucord.coreplugins.badges.SupporterBadges
 import com.aliucord.coreplugins.plugindownloader.PluginDownloader
@@ -297,8 +298,9 @@ object PluginManager {
     @JvmStatic
     fun loadCorePlugins(context: Context) {
         val corePlugins = arrayOf(
-            AlignThreads(),
-            AppBarFix(),
+            CoreFixes(),
+            CoreFeatures(),
+            AccountStanding(),
             ButtonsAPI(),
             CommandHandler(),
             CoreCommands(),
@@ -307,26 +309,20 @@ object PluginManager {
             DiscordBadges(),
             ExperimentDefaults(),
             ForwardedMessages(),
-            GifPreviewFix(),
-            MembersListFix(),
+            NewMessages(),
             NewPins(),
             NoTrack(),
-            OpenLinksExternallyFix(),
             PluginDownloader(),
             Polls(),
-            PrivateChannelsListScroll(),
-            PrivateThreads(),
             Pronouns(),
             RNAPI(),
             RemoveBilling(),
             RestartButton(),
-            ShowReplyMention(),
-            StickerCrashFix(),
+            ShowReplyMentionFix(),
             SupportWarn(),
             SupporterBadges(),
             TokenLogin(),
             UploadSize(),
-            VoiceFix(),
         )
 
         val safeMode = isSafeModeEnabled();

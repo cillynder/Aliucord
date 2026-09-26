@@ -5,21 +5,20 @@ import android.util.AttributeSet
 import com.aliucord.coreplugins.decorations.DecorationsSettings
 import com.aliucord.coreplugins.decorations.Decorator
 import com.aliucord.coreplugins.decorations.avatar.AvatarDecorator
-import com.aliucord.coreplugins.decorations.displayname.DisplayNameStyles
-import com.aliucord.coreplugins.decorations.nameplate.NameplateDecorator
 import com.aliucord.coreplugins.decorations.guildtags.GuildTagDecorator
+import com.aliucord.coreplugins.decorations.nameplate.NameplateDecorator
 import com.aliucord.entities.CorePlugin
 import com.aliucord.patcher.*
 import com.aliucord.updater.ManagerBuild
 import com.aliucord.wrappers.users.*
 import com.discord.api.presence.Presence
-import com.discord.api.user.User
 import com.discord.databinding.WidgetChannelMembersListItemUserBinding
 import com.discord.models.member.GuildMember
 import com.discord.models.user.CoreUser
 import com.discord.models.user.MeUser
 import com.discord.stores.StoreGuilds
 import com.discord.stores.StoreStream
+import com.discord.utilities.user.UserUtils
 import com.discord.widgets.channels.list.WidgetChannelsListAdapter
 import com.discord.widgets.channels.list.items.ChannelListItem
 import com.discord.widgets.channels.list.items.ChannelListItemPrivate
@@ -31,6 +30,8 @@ import com.discord.widgets.chat.list.entries.MessageEntry
 import com.discord.widgets.user.profile.UserProfileHeaderView
 import com.discord.widgets.user.profile.UserProfileHeaderViewModel
 import com.discord.api.guildmember.GuildMember as ApiGuildMember
+import com.discord.api.user.User as ApiUser
+import com.discord.models.user.User as ModelUser
 
 internal class Decorations : CorePlugin(Manifest().apply {
     name = "Decorations"
@@ -54,7 +55,6 @@ internal class Decorations : CorePlugin(Manifest().apply {
         }
 
         patchFields()
-        DisplayNameStyles.patch(patcher)
         patchHandlers()
         decorators.forEach { it.patch(patcher) }
     }
@@ -83,7 +83,7 @@ internal class Decorations : CorePlugin(Manifest().apply {
             }
         }
 
-        patcher.after<CoreUser>(User::class.java) { (_, api: User) ->
+        patcher.after<CoreUser>(ApiUser::class.java) { (_, api: ApiUser) ->
             avatarDecorationData = api.avatarDecorationData
             collectibles = api.collectibles
             displayNameStyles = api.displayNameStyles
@@ -98,7 +98,7 @@ internal class Decorations : CorePlugin(Manifest().apply {
                     && primaryGuild == other.primaryGuild
             }
         }
-        patcher.after<CoreUser.Companion>("merge", CoreUser::class.java, User::class.java) { (param, old: CoreUser, api: User) ->
+        patcher.after<CoreUser.Companion>("merge", CoreUser::class.java, ApiUser::class.java) { (param, old: CoreUser, api: ApiUser) ->
             val res = param.result as CoreUser
 
             (api.avatarDecorationData ?: old.avatarDecorationData)?.let { res.avatarDecorationData = it }
@@ -107,7 +107,7 @@ internal class Decorations : CorePlugin(Manifest().apply {
             (api.primaryGuild ?: old.primaryGuild)?.let { res.primaryGuild = it }
         }
 
-        patcher.after<MeUser>(User::class.java) { (_, api: User) ->
+        patcher.after<MeUser>(ApiUser::class.java) { (_, api: ApiUser) ->
             avatarDecorationData = api.avatarDecorationData
             collectibles = api.collectibles
             displayNameStyles = api.displayNameStyles
@@ -122,7 +122,7 @@ internal class Decorations : CorePlugin(Manifest().apply {
                     && primaryGuild == other.primaryGuild
             }
         }
-        patcher.after<MeUser.Companion>("merge", MeUser::class.java, User::class.java) { (param, old: MeUser, api: User) ->
+        patcher.after<MeUser.Companion>("merge", MeUser::class.java, ApiUser::class.java) { (param, old: MeUser, api: ApiUser) ->
             val res = param.result as MeUser
 
             (api.avatarDecorationData ?: old.avatarDecorationData)?.let { res.avatarDecorationData = it }
@@ -138,6 +138,14 @@ internal class Decorations : CorePlugin(Manifest().apply {
             val res = param.result as ApiGuildMember
             res.avatarDecorationData = old.avatarDecorationData
             res.collectibles = old.collectibles
+        }
+
+        patcher.after<UserUtils>("synthesizeApiUser", ModelUser::class.java) { (param, model: ModelUser) ->
+            val res = param.result as ApiUser
+            res.avatarDecorationData = model.avatarDecorationData
+            res.collectibles = model.collectibles
+            res.displayNameStyles = model.displayNameStyles
+            res.primaryGuild = model.primaryGuild
         }
 
         patcher.after<GuildMember.Companion>(
@@ -163,7 +171,7 @@ internal class Decorations : CorePlugin(Manifest().apply {
             decorators.forEach { it.onDMsListInit(this, adapter) }
         }
 
-        // onDMsConfigure
+        // onDMsListConfigure
         patcher.after<WidgetChannelsListAdapter.ItemChannelPrivate>(
             "onConfigure",
             Int::class.javaPrimitiveType!!,

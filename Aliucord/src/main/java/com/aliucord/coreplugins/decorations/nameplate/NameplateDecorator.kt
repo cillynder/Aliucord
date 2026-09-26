@@ -3,6 +3,7 @@ package com.aliucord.coreplugins.decorations.nameplate
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import androidx.constraintlayout.widget.*
+import androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import com.aliucord.coreplugins.decorations.Decorator
@@ -27,7 +28,6 @@ import com.lytefast.flexinput.R
 private val ChannelMembersListViewHolderMember.binding by accessField<WidgetChannelMembersListItemUserBinding>()
 
 private const val decoAlpha = 0.6f
-private const val PARENT_ID = ConstraintLayout.LayoutParams.PARENT_ID
 
 internal class NameplateDecorator() : Decorator() {
     private val decoId = View.generateViewId()
@@ -121,7 +121,7 @@ internal class NameplateDecorator() : Decorator() {
                     this,
                     "https://cdn.discordapp.com/assets/collectibles/${data.asset}img.png?passthrough=true",
                 )
-                background = Palette.from(data.palette).drawable()
+                background = NameplatePalette.from(data.palette).drawable()
             }
         }
     }
@@ -154,42 +154,36 @@ internal class NameplateDecorator() : Decorator() {
         ConstraintSet().run {
             clone(layout)
 
-            val start = ConstraintSet.START
-            val end = ConstraintSet.END
-            val right = ConstraintSet.RIGHT
-            val top = ConstraintSet.TOP
-            val bottom = ConstraintSet.BOTTOM
-
-            setMargin(avatarView.id, start, 16.dp)
+            setMargin(avatarView.id, ConstraintSet.START, 16.dp)
 
             // Move the owner indicator so it doesn't block nameplates
-            connect(ownerIndicator.id, top, usernameView.id, top)
-            connect(ownerIndicator.id, bottom, usernameView.id, bottom)
-            connect(ownerIndicator.id, start, usernameView.id, end)
+            connect(ownerIndicator.id, ConstraintSet.TOP, usernameView.id, ConstraintSet.TOP)
+            connect(ownerIndicator.id, ConstraintSet.BOTTOM, usernameView.id, ConstraintSet.BOTTOM)
+            connect(ownerIndicator.id, ConstraintSet.START, usernameView.id, ConstraintSet.END)
             setDimensionRatio(ownerIndicator.id, "W,1:1")
             constrainedWidth(ownerIndicator.id, true)
 
             // Move the boosted indicator so it doesn't block nameplates
-            connect(boostedIndicator.id, top, usernameView.id, top)
-            connect(boostedIndicator.id, bottom, usernameView.id, bottom)
-            connect(boostedIndicator.id, start, ownerIndicator.id, end)
+            connect(boostedIndicator.id, ConstraintSet.TOP, usernameView.id, ConstraintSet.TOP)
+            connect(boostedIndicator.id, ConstraintSet.BOTTOM, usernameView.id, ConstraintSet.BOTTOM)
+            connect(boostedIndicator.id, ConstraintSet.START, ownerIndicator.id, ConstraintSet.END)
             setDimensionRatio(boostedIndicator.id, "W,1:1")
             constrainedWidth(boostedIndicator.id, true)
 
             // Fixup some extraneous constraints
-            clear(boostedIndicator.id, right)
-            clear(boostedIndicator.id, end)
-            clear(usernameView.id, right)
-            clear(usernameView.id, end)
-            clear(gameView.id, right)
-            clear(gameView.id, end)
-            clear(rpcIconView.id, right)
-            clear(rpcIconView.id, end)
+            clear(boostedIndicator.id, ConstraintSet.RIGHT)
+            clear(boostedIndicator.id, ConstraintSet.END)
+            clear(usernameView.id, ConstraintSet.RIGHT)
+            clear(usernameView.id, ConstraintSet.END)
+            clear(gameView.id, ConstraintSet.RIGHT)
+            clear(gameView.id, ConstraintSet.END)
+            clear(rpcIconView.id, ConstraintSet.RIGHT)
+            clear(rpcIconView.id, ConstraintSet.END)
 
             // Set width limits for username and status
-            connect(usernameView.id, end, guidelineId, end)
-            connect(gameView.id, end, rpcIconView.id, start)
-            connect(rpcIconView.id, end, guidelineId, end)
+            connect(usernameView.id, ConstraintSet.END, guidelineId, ConstraintSet.END)
+            connect(gameView.id, ConstraintSet.END, rpcIconView.id, ConstraintSet.START)
+            connect(rpcIconView.id, ConstraintSet.END, guidelineId, ConstraintSet.END)
 
             applyTo(layout)
         }
