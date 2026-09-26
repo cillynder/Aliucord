@@ -2,16 +2,15 @@
 
 Includes some WIP goodies:
 
-- animated avif (https://github.com/Aliucord/Aliucord/pull/789)
-- new badges (https://github.com/Aliucord/Aliucord/pull/796)
-- private profiles (https://github.com/Aliucord/Aliucord/pull/797)
-- settings hoist
-- super early runtime smali dex loader
+- feat/avif: animated avif (https://github.com/Aliucord/Aliucord/pull/789)
+- feat/badgesv2: new badges (https://github.com/Aliucord/Aliucord/pull/796)
+- feat/privateprofile: private profiles (https://github.com/Aliucord/Aliucord/pull/797)
+- feat/hoist_coreplugins: hoist coreplugins to the top in settings
+- feat/earlydex: super early runtime smali dex loader
     - place dex at /sdcard/Aliucord/smali.dex
-- dx: core can now access smali-modified code directly
-    - no reflection necessary anymore
-    - plugins will be able to access it soon
-        - perhaps also allow plugins to make some basic changes like access widening to avoid reflection, but that's for later with runtime smali/dex *patching*
+    - dx: core can now access smali-modified code directly
+        - no reflection necessary anymore
+        - plugins will be able to access it soon, perhaps also allow plugins to make some basic changes like access widening to avoid reflection, but that's for later with runtime smali/dex *patching*
 
 ## begin original readme
 
