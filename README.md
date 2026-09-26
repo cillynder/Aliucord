@@ -2,15 +2,16 @@
 
 Includes some WIP goodies:
 
-- feat/fluff: user decoration coreplugin (https://github.com/Aliucord/Aliucord/pull/593)
-    - feat/fluff_guildtags: guild tag support (https://github.com/Aliucord/Aliucord/pull/594)
-    - feat/fluff_displayname: display name styles support (WIP)
-        - todo: other effects
-        - todo: settings to disable font, effect, or colour individually
-        - bugs: chat username not themed properly, sometimes
-        - bugs: profile header view gradient lighter than intended
-        - bugs: textview gets cut off when font is set late (fetch required)
-        - note: should probably only theme profile header
+- animated avif (https://github.com/Aliucord/Aliucord/pull/789)
+- new badges (https://github.com/Aliucord/Aliucord/pull/796)
+- private profiles (https://github.com/Aliucord/Aliucord/pull/797)
+- settings hoist
+- super early runtime smali dex loader
+    - place dex at /sdcard/Aliucord/smali.dex
+- dx: core can now access smali-modified code directly
+    - no reflection necessary anymore
+    - plugins will be able to access it soon
+        - perhaps also allow plugins to make some basic changes like access widening to avoid reflection, but that's for later with runtime smali/dex *patching*
 
 ## begin original readme
 
