@@ -15,7 +15,6 @@ import android.net.Uri
 import android.os.*
 import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
-import com.discord.app.App
 import com.discord.app.AppActivity
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -122,7 +121,7 @@ private class Injector(private val appCtx: Application) {
 
         // Load the core
         val loadTarget = if (useCustomCore) internalCustomCoreFile else internalCoreFile
-        Logger.d("Adding Aliucord core ${loadTarget.absolutePath} the classpath...")
+        Logger.d("Adding Aliucord core ${loadTarget.absolutePath} to the classpath...")
         addDexToClasspath(
             dexFile = loadTarget,
             classLoader = appCtx.classLoader,

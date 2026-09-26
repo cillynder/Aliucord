@@ -16,7 +16,6 @@ import com.aliucord.utils.*
 import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.utils.ViewUtils.addTo
 import com.aliucord.utils.ViewUtils.findViewById
-import com.aliucord.wrappers.users.primaryGuild
 import com.discord.databinding.WidgetChannelMembersListItemUserBinding
 import com.discord.databinding.WidgetChannelsListItemChannelPrivateBinding
 import com.discord.stores.StoreLurking

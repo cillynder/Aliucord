@@ -71,4 +71,6 @@ class AttachmentWrapper(private val attachment: MessageAttachment) {
   }
 }
 
+@Deprecated("This accessor is no longer required; remove the import and access the field directly")
+@Suppress("EXTENSION_SHADOWED_BY_MEMBER")
 val MessageAttachment.flags: Int? by accessField()
