@@ -2,9 +2,6 @@
 
 Includes some WIP goodies:
 
-- feat/avif: animated avif (https://github.com/Aliucord/Aliucord/pull/789)
-- feat/badgesv2: new badges (https://github.com/Aliucord/Aliucord/pull/796)
-- feat/privateprofile: private profiles (https://github.com/Aliucord/Aliucord/pull/797)
 - feat/hoist_coreplugins: hoist coreplugins to the top in settings
 - feat/earlydex: super early runtime smali dex loader
     - place dex at /sdcard/Aliucord/smali.dex
