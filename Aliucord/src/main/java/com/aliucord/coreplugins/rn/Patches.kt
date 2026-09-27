@@ -62,9 +62,6 @@ import com.google.android.material.textfield.TextInputLayout
 import com.google.gson.stream.JsonToken
 import com.lytefast.flexinput.R
 import de.robv.android.xposed.XC_MethodHook
-import rx.Observable
-import java.lang.reflect.Type
-import java.util.Collections
 import com.discord.models.user.User as ModelUser
 
 fun patchGlobalName() {
@@ -258,7 +255,7 @@ fun patchUserProfile(logger: Logger, patcher: PatcherAPI) {
             val res = req.execute()
             if (!res.ok()) {
                 if (res.statusCode != 404) {
-                    logger.errorToast("Error while fetching profile: ${res.statusCode}: ${res.statusMessage}", null)
+                    logger.debug("Error while fetching profile: ${res.statusCode}: ${res.statusMessage}")
                     subscriber.onError(Http.HttpException(req, res))
                 }
             } else {
