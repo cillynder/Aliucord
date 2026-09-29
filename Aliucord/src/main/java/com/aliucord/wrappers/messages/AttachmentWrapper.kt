@@ -6,6 +6,7 @@
 
 package com.aliucord.wrappers.messages
 
+import com.aliucord.utils.accessField
 import com.discord.api.message.attachment.MessageAttachment
 import com.discord.api.message.attachment.MessageAttachmentType
 import de.robv.android.xposed.XposedBridge
@@ -98,3 +99,5 @@ class AttachmentWrapper(private val attachment: MessageAttachment) {
     private val heightField = clazz.getDeclaredField("height").apply { isAccessible = true }
   }
 }
+
+val MessageAttachment.flags: Int? by accessField()

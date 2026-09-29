@@ -7,26 +7,27 @@
 package com.aliucord.coreplugins.plugindownloader
 
 import com.aliucord.*
+import com.aliucord.entities.CorePlugin
 import java.io.File
 import java.io.IOException
-import com.aliucord.entities.CorePlugin
 
 internal class PluginFile(val plugin: String) : File("${Constants.PLUGINS_PATH}/$plugin.zip") {
     val isInstalled
         get() = this.exists()
 
     fun install(author: String, repo: String, callback: Runnable? = null) {
-        install("https://github.com/$author/$repo/raw/builds/$plugin.zip", callback)
+        install("https://cdn.jsdelivr.net/gh/$author/$repo@builds/$plugin.zip", callback)
     }
 
     fun install(url: String, callback: Runnable? = null) {
         Utils.threadPool.execute {
+            val safeMode = PluginManager.isSafeModeEnabled()
             val isReinstall = isInstalled
             if (PluginManager.plugins[plugin] is CorePlugin) {
                 Utils.showToast("External plugins are not able to override built-in coreplugins!")
                 throw IOException("External plugins are not able to override built-in coreplugins")
             }
-            
+
             try {
                 Http.simpleDownload(url, this)
                 // Plugins are started on the main thread.
@@ -37,20 +38,24 @@ internal class PluginFile(val plugin: String) : File("${Constants.PLUGINS_PATH}/
                         PluginManager.stopPlugin(plugin)
                         PluginManager.unloadPlugin(plugin)
                     }
-                    PluginManager.loadPlugin(Utils.appContext, this)
-                    if (PluginManager.isPluginEnabled(plugin))
-                        PluginManager.startPlugin(plugin)
-                    else
-                        PluginManager.enablePlugin(plugin)
+                    if (!safeMode) {
+                        PluginManager.loadPlugin(Utils.appContext, this)
+                        if (PluginManager.isPluginEnabled(plugin))
+                            PluginManager.startPlugin(plugin)
+                        else
+                            PluginManager.enablePlugin(plugin)
+                    }
                     Utils.showToast("Plugin $plugin successfully ${if (isReinstall) "re" else ""}installed!")
-
+                    if (safeMode) {
+                        Utils.showToast("Plugin not loaded due to safe mode!")
+                    }
                     if (PluginManager.plugins[plugin]?.requiresRestart() == true)
                         Utils.promptRestart()
 
                     callback?.let { Utils.mainThread.post(it) }
                 }
             } catch (ex: IOException) {
-                logger.error(ex)
+                Logger("PluginFile").error(ex)
                 Utils.showToast("Failed to download $plugin: ${ex.message}")
                 if (this.exists()) this.delete()
             }

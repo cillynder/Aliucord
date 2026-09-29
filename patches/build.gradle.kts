@@ -4,7 +4,7 @@ import org.gradle.kotlin.dsl.support.serviceOf
 import java.io.ByteArrayOutputStream
 import java.util.Properties
 
-version = "1.4.0"
+version = "1.5.0"
 
 // --- Android --- //
 
@@ -44,7 +44,7 @@ val TASK_GROUP = "aliucord"
 
 /** Task group for all private tasks */
 @Suppress("PropertyName")
-val TASK_GROUP_INTERNAL = "aliucordInternal"
+val TASK_GROUP_INTERNAL = "aliucord-internal"
 
 val localPropertiesFile = project.rootProject.file("local.properties")
 val localProperties = Properties().apply {
@@ -251,6 +251,7 @@ tasks.register<DeployComponentTask>("deployWithAdb") {
 
 tasks.register("writePatches") {
     group = TASK_GROUP
+    outputs.upToDateWhen { false }
     mustRunAfter(applyPatches) // When applyPatches is also being run, it must come before
 
     // Configuration cache workaround

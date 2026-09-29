@@ -11,14 +11,15 @@ import android.content.res.AssetManager
 import android.content.res.Resources
 import com.aliucord.Utils.appContext
 import com.aliucord.coreplugins.*
-import com.aliucord.coreplugins.badges.DiscordBadges
-import com.aliucord.coreplugins.badges.SupporterBadges
+import com.aliucord.coreplugins.accountstanding.AccountStanding
+import com.aliucord.coreplugins.badges.Badges
 import com.aliucord.coreplugins.plugindownloader.PluginDownloader
 import com.aliucord.coreplugins.rn.RNAPI
 import com.aliucord.entities.CorePlugin
 import com.aliucord.entities.Plugin
 import com.aliucord.patcher.Patcher
 import com.aliucord.patcher.PreHook
+import com.aliucord.settings.ALIUCORD_SAFE_MODE_KEY
 import com.aliucord.utils.GsonUtils.fromJson
 import com.aliucord.utils.GsonUtils.gson
 import com.aliucord.utils.MapUtils
@@ -277,6 +278,10 @@ object PluginManager {
     @JvmStatic
     fun getVisiblePlugins() = plugins.filter { (_, p) -> p !is CorePlugin || !p.isHidden }
 
+    /** Checks whether safe mode is enabled. */
+    @JvmStatic
+    fun isSafeModeEnabled() = Main.settings.getBool(ALIUCORD_SAFE_MODE_KEY, false)
+
     /** Gets a formatted string with info about installed and enabled plugins */
     @JvmStatic
     fun getPluginsInfo(): String {
@@ -292,39 +297,37 @@ object PluginManager {
     @JvmStatic
     fun loadCorePlugins(context: Context) {
         val corePlugins = arrayOf(
-            AlignThreads(),
-            AppBarFix(),
+            CoreFixes(),
+            CoreFeatures(),
+            AccountStanding(),
+            Badges(),
             ButtonsAPI(),
             CommandHandler(),
             ComponentsV2(),
             CoreCommands(),
             Decorations(),
             DefaultStickers(),
-            DiscordBadges(),
             ExperimentDefaults(),
             ForwardedMessages(),
-            GifPreviewFix(),
-            MembersListFix(),
+            NewMessages(),
             NewPins(),
             NoTrack(),
-            OpenLinksExternallyFix(),
             PluginDownloader(),
             Polls(),
-            PrivateChannelsListScroll(),
-            PrivateThreads(),
             Pronouns(),
             RNAPI(),
             RemoveBilling(),
             RestartButton(),
-            ShowReplyMention(),
-            StickerCrashFix(),
+            ShowReplyMentionFix(),
             SupportWarn(),
-            SupporterBadges(),
             TokenLogin(),
             UploadSize(),
         )
 
-        corePlugins.forEach { p ->
+        val safeMode = isSafeModeEnabled();
+        corePlugins.filter { p ->
+            !safeMode || p.isRequired
+        }.forEach { p ->
             logger.info("Loading coreplugin: ${p.name}")
             try {
                 plugins[p.name] = p

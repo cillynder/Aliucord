@@ -7,9 +7,22 @@
 package com.aliucord.coreplugins.rn
 
 import android.content.Context
+import android.graphics.Color
+import android.net.Uri
+import android.view.Gravity
 import android.view.View
+import android.widget.*
+import androidx.core.content.res.ResourcesCompat
+import com.aliucord.Http
+import com.aliucord.Logger
+import com.aliucord.api.PatcherAPI
 import com.aliucord.api.rn.user.RNUserProfile
 import com.aliucord.patcher.*
+import com.aliucord.utils.DimenUtils.dp
+import com.aliucord.utils.GsonUtils
+import com.aliucord.utils.RxUtils
+import com.aliucord.utils.ViewUtils.addTo
+import com.aliucord.utils.ViewUtils.findViewById
 import com.aliucord.wrappers.embeds.MessageEmbedWrapper.Companion.rawVideo
 import com.aliucord.wrappers.users.globalName
 import com.discord.api.channel.Channel
@@ -17,9 +30,7 @@ import com.discord.api.channel.`ChannelUtils$getDisplayName$1`
 import com.discord.api.message.embed.EmbedType
 import com.discord.api.message.embed.MessageEmbed
 import com.discord.api.role.GuildRoleColors
-import com.discord.api.sticker.Sticker
-import com.discord.api.sticker.StickerFormatType
-import com.discord.api.sticker.StickerPartial
+import com.discord.api.sticker.*
 import com.discord.api.user.User
 import com.discord.api.user.UserProfile
 import com.discord.app.AppFragment
@@ -29,11 +40,12 @@ import com.discord.models.member.GuildMember
 import com.discord.models.presence.Presence
 import com.discord.models.user.CoreUser
 import com.discord.models.user.MeUser
-import com.discord.stores.*
+import com.discord.stores.StoreStream
 import com.discord.utilities.auth.`AuthUtils$createDiscriminatorInputValidator$1`
 import com.discord.utilities.icon.IconUtils
 import com.discord.utilities.mg_recycler.MGRecyclerDataPayload
 import com.discord.utilities.mg_recycler.SingleTypePayload
+import com.discord.utilities.rest.RestAPI
 import com.discord.utilities.search.suggestion.entries.UserSuggestion
 import com.discord.utilities.user.UserUtils
 import com.discord.views.user.SettingsMemberView
@@ -45,24 +57,16 @@ import com.discord.widgets.settings.account.WidgetSettingsAccountUsernameEdit
 import com.discord.widgets.user.*
 import com.discord.widgets.user.profile.UserProfileHeaderView
 import com.discord.widgets.user.profile.UserProfileHeaderViewModel
+import com.discord.widgets.user.usersheet.WidgetUserSheet
+import com.discord.widgets.user.usersheet.WidgetUserSheetViewModel
 import com.google.android.material.textfield.TextInputLayout
-import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonToken
+import com.lytefast.flexinput.R
 import de.robv.android.xposed.XC_MethodHook
 import rx.Observable
 import java.lang.reflect.Type
-import java.util.*
+import java.util.Collections
 import com.discord.models.user.User as ModelUser
-
-fun patchNextCallAdapter() {
-    val oldUserProfile = TypeToken.getParameterized(Observable::class.java, UserProfile::class.java).type
-    val newUserProfile = TypeToken.getParameterized(Observable::class.java, RNUserProfile::class.java).type
-
-    // nextCallAdapter https://github.com/square/retrofit/blob/c0fd64b5d3ddcc6665a16a4814c5b1596762305d/retrofit/src/main/java/retrofit2/Retrofit.java#L252
-    Patcher.addPatch(i0.y::class.java.getDeclaredMethod("a", Type::class.java, Array<Annotation>::class.java), PreHook {
-        if (it.args[0] == oldUserProfile) it.args[0] = newUserProfile
-    })
-}
 
 fun patchGlobalName() {
     val apiUser = User::class.java
@@ -201,8 +205,10 @@ fun patchDefaultAvatars() {
                 val size = it.args[4] as Int?
                 val ext = IconUtils.INSTANCE.getImageExtension(avatar, animated)
 
-                "https://cdn.discordapp.com/avatars/$id/$avatar.$ext" +
-                    (size?.let { "?size=${IconUtils.getMediaProxySize(size)}" } ?: "")
+                Uri.parse("https://cdn.discordapp.com/avatars/$id/$avatar.$ext")
+                    .buildUpon()
+                    .apply { size?.let { appendQueryParameter("size", IconUtils.getMediaProxySize(it).toString()) } }
+                    .toString()
             } else {
                 val discrim = it.args[2] as Int?
 
@@ -232,11 +238,81 @@ fun patchUsername() {
     })
 }
 
-fun patchUserProfile() {
+fun patchUserProfile(logger: Logger, patcher: PatcherAPI) {
     /** discord doesn't check in [com.discord.widgets.user.WidgetUserMutualGuilds.Model] if mutualGuilds list is null */
-    Patcher.addPatch(UserProfile::class.java.getDeclaredMethod("d"), Hook {
-        if (it.result == null) it.result = Collections.EMPTY_LIST
-    })
+    patcher.after<UserProfile>("d") { param ->
+        if (param.result == null) param.result = listOf<Any>()
+    }
+
+    /** new props are required to show certain new badges */
+    patcher.instead<RestAPI>(
+        "userProfileGet",
+        Long::class.javaPrimitiveType!!,
+        Boolean::class.javaPrimitiveType!!,
+        Long::class.javaObjectType,
+    ) { (_, userId: Long, withMutualGuilds: Boolean, guildId: Long?) ->
+        RxUtils.create { subscriber ->
+            val req = Http.Request.newDiscordRNRequest(
+                "/users/${userId}/profile?with_mutual_guilds=${withMutualGuilds}"
+                    + guildId?.let { "&guild_id=${guildId}" }.orEmpty()
+            )
+            val res = req.execute()
+            if (!res.ok()) {
+                if (res.statusCode != 404) {
+                    logger.debug("Error while fetching profile: ${res.statusCode}: ${res.statusMessage}")
+                    subscriber.onError(Http.HttpException(req, res))
+                }
+            } else {
+                val data = res.json(GsonUtils.gsonRestApi, RNUserProfile::class.java)
+                subscriber.onNext(data)
+            }
+            subscriber.onCompleted()
+        }
+    }
+}
+
+private val privateProfileViewId = View.generateViewId()
+fun patchPrivateUserProfile(patcher: PatcherAPI) {
+    patcher.after<WidgetUserSheet>(
+        "configureUI",
+        WidgetUserSheetViewModel.ViewState::class.java,
+    ) { (_, viewState: WidgetUserSheetViewModel.ViewState) ->
+        val binding = WidgetUserSheet.`access$getBinding$p`(this)
+        val layout = binding.a.findViewById<LinearLayout>("user_sheet_content")
+        var view = layout.findViewById<FrameLayout?>(privateProfileViewId)
+        if (view == null) {
+            view = FrameLayout(requireContext()).addTo(layout, 0) {
+                id = privateProfileViewId
+                visibility = View.GONE
+                setPadding(0, 12.dp, 0, 12.dp)
+                setBackgroundColor(Color.BLACK)
+                TextView(context, null, 0, R.i.UiKit_TextView_Semibold).addTo(this) {
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                        gravity = Gravity.CENTER
+                    }
+                    text = "Private Profile"
+                    setTextColor(Color.WHITE)
+                    val icon = ResourcesCompat.getDrawable(resources, R.e.ic_lock_white_a60_16dp, null)
+                    compoundDrawablePadding = 8.dp
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
+                }
+            }
+        }
+
+        view.visibility = View.GONE
+
+        if (viewState !is WidgetUserSheetViewModel.ViewState.Loaded) return@after
+        val profile = viewState.userProfile as? RNUserProfile ?: return@after
+        if (profile.private == true) {
+            view.visibility = View.VISIBLE
+
+            val name = GuildMember.getNickOrUsername(viewState.guildMember, viewState.user)
+            // bioCardView
+            binding.b.visibility = View.VISIBLE
+            // bioText
+            binding.g.text = "${name}'s profile is private, so some info is hidden. Add them as a friend to see more."
+        }
+    }
 }
 
 fun patchStickers() {
