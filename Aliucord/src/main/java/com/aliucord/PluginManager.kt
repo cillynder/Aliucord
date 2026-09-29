@@ -13,6 +13,7 @@ import com.aliucord.Utils.appContext
 import com.aliucord.coreplugins.*
 import com.aliucord.coreplugins.accountstanding.AccountStanding
 import com.aliucord.coreplugins.badges.Badges
+import com.aliucord.coreplugins.componentsv2.ComponentsV2
 import com.aliucord.coreplugins.plugindownloader.PluginDownloader
 import com.aliucord.coreplugins.rn.RNAPI
 import com.aliucord.entities.CorePlugin

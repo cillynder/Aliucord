@@ -1,4 +1,4 @@
-package com.aliucord.coreplugins
+package com.aliucord.coreplugins.componentsv2
 
 import android.content.Context
 import android.view.ViewGroup

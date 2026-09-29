@@ -15,6 +15,8 @@ import com.discord.widgets.botuikit.views.select.`SelectComponentBottomSheet$bin
 import com.discord.widgets.chat.list.entries.BotUiComponentEntry
 import com.lytefast.flexinput.R
 
+import b.a.k.b as FormatUtils
+
 internal class SelectSheet : AppBottomSheet {
     val entry: BotUiComponentEntry?
     val component: SelectV2MessageComponent?
@@ -69,7 +71,7 @@ internal class SelectSheet : AppBottomSheet {
 
         if (state.isMultiSelect) {
              subtitle.text =
-                b.a.k.b.k(
+                FormatUtils.k(
                     this,
                     R.h.message_select_component_select_requirement,
                     arrayOf(state.minSelections),
