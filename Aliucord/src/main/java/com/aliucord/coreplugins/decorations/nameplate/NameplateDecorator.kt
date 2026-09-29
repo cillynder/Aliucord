@@ -13,7 +13,6 @@ import com.aliucord.utils.ViewUtils.endPadding
 import com.aliucord.utils.ViewUtils.leftPadding
 import com.aliucord.utils.ViewUtils.rightPadding
 import com.aliucord.utils.accessField
-import com.aliucord.wrappers.users.collectibles
 import com.discord.api.user.Collectibles
 import com.discord.databinding.WidgetChannelMembersListItemUserBinding
 import com.discord.stores.StoreStream

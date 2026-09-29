@@ -24,7 +24,6 @@ import com.aliucord.utils.RxUtils
 import com.aliucord.utils.ViewUtils.addTo
 import com.aliucord.utils.ViewUtils.findViewById
 import com.aliucord.wrappers.embeds.MessageEmbedWrapper.Companion.rawVideo
-import com.aliucord.wrappers.users.globalName
 import com.discord.api.channel.Channel
 import com.discord.api.channel.`ChannelUtils$getDisplayName$1`
 import com.discord.api.message.embed.EmbedType
@@ -63,9 +62,6 @@ import com.google.android.material.textfield.TextInputLayout
 import com.google.gson.stream.JsonToken
 import com.lytefast.flexinput.R
 import de.robv.android.xposed.XC_MethodHook
-import rx.Observable
-import java.lang.reflect.Type
-import java.util.Collections
 import com.discord.models.user.User as ModelUser
 
 fun patchGlobalName() {

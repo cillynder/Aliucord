@@ -162,8 +162,8 @@ internal object CoreUpdater {
         }
 
         dexElements.any { element ->
-            val file = ReflectUtils.getField(element, fieldName)!! as File
-            file.name == "Aliucord.custom.zip"
+            val file = ReflectUtils.getField(element, fieldName) as File?
+            file?.name == "Aliucord.custom.zip"
         }
     }
 

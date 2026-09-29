@@ -15,7 +15,6 @@ import android.net.Uri
 import android.os.*
 import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
-import com.discord.app.App
 import com.discord.app.AppActivity
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -36,7 +35,7 @@ private val activityInitialized = AtomicBoolean(false)
  * The main entrypoint, invoked by the overridden Discord class.
  * This is invoked shortly after [App.onCreate] starts executing.
  */
-internal fun init(appCtx: Application) {
+internal fun init(appCtx: Application, loaded: Boolean) {
     if (applicationInitialized.getAndSet(true)) return
 
     Logger.init()
@@ -56,7 +55,7 @@ internal fun init(appCtx: Application) {
     }
 
     try {
-        Injector(appCtx).onApplicationCreate()
+        Injector(appCtx).onApplicationCreate(loaded)
     } catch (t: Throwable) {
         Logger.errorToast(appCtx, "Failed to run Aliucord Injector", t)
     }
@@ -94,10 +93,12 @@ private class Injector(private val appCtx: Application) {
      * This is invoked when [App.onCreate] is called, triggering a possible early initialization of the Aliucord core
      * if permissions have been granted and the core has already been downloaded during a prior launch.
      */
-    fun onApplicationCreate() {
-        if (!isPermissionsGranted()) {
-            restoreCoreFlow()
-            return
+    fun onApplicationCreate(loaded: Boolean) {
+        if (!loaded) {
+            if (!isPermissionsGranted()) {
+                restoreCoreFlow()
+                return
+            }
         }
 
         Logger.d("Checking custom core settings")
@@ -105,28 +106,35 @@ private class Injector(private val appCtx: Application) {
 
         // Delete old custom cores copied to code cache if they exist
         if (!useCustomCore) {
-            internalCustomCoreFile.delete()
+            val deleted = internalCustomCoreFile.delete()
+            // If core was already loaded, let's restart
+            if (loaded && deleted) {
+                Logger.d("Custom core wiped. Restarting...")
+                restartAliucord()
+            }
         } else {
             Logger.d("Using custom Aliucord core!")
         }
 
-        // Copy core bundle from external storage to internal cache to prevent deletion while running
-        if (useCustomCore) {
-            externalCustomCoreFile.copyTo(internalCustomCoreFile, overwrite = true)
-        }
-        // Download new stable core
-        else if (!internalCoreFile.exists()) {
-            restoreCoreFlow()
-            return
-        }
+        if (!loaded) {
+            // Copy core bundle from external storage to internal cache to prevent deletion while running
+            if (useCustomCore) {
+                externalCustomCoreFile.copyTo(internalCustomCoreFile, overwrite = true)
+            }
+            // Download new stable core
+            else if (!internalCoreFile.exists()) {
+                restoreCoreFlow()
+                return
+            }
 
-        // Load the core
-        val loadTarget = if (useCustomCore) internalCustomCoreFile else internalCoreFile
-        Logger.d("Adding Aliucord core ${loadTarget.absolutePath} the classpath...")
-        addDexToClasspath(
-            dexFile = loadTarget,
-            classLoader = appCtx.classLoader,
-        )
+            // Load the core
+            val loadTarget = if (useCustomCore) internalCustomCoreFile else internalCoreFile
+            Logger.d("Adding Aliucord core ${loadTarget.absolutePath} to the classpath...")
+            addDexToClasspath(
+                dexFile = loadTarget,
+                classLoader = appCtx.classLoader,
+            )
+        }
 
         // Start the loaded core
         try {

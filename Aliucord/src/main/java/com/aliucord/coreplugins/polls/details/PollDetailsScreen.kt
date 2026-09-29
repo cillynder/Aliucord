@@ -8,7 +8,6 @@ import com.aliucord.Utils
 import com.aliucord.coreplugins.polls.PollsStore
 import com.aliucord.coreplugins.polls.PollsStore.VotesSnapshot
 import com.aliucord.utils.RxUtils.subscribe
-import com.aliucord.wrappers.messages.poll
 import com.discord.api.message.poll.MessagePoll
 import com.discord.api.message.reaction.MessageReactionEmoji
 import com.discord.app.AppFragment
