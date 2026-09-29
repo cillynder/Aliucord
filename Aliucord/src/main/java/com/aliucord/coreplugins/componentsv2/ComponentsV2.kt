@@ -66,7 +66,7 @@ internal class ComponentsV2 : CorePlugin(Manifest("ComponentsV2")) {
                 is MediaGalleryComponent ->
                     MediaGalleryMessageComponent.mergeToMessageComponent(layout, index)
                 is FileComponent ->
-                    ActionRowMessageComponent(layout.type, index, components)
+                    FileMessageComponent.mergeToMessageComponent(layout, index)
                 is SeparatorComponent ->
                     SeparatorMessageComponent.mergeToMessageComponent(layout, index)
                 is ContainerComponent ->
@@ -104,7 +104,7 @@ internal class ComponentsV2 : CorePlugin(Manifest("ComponentsV2")) {
                 ComponentType.MEDIA_GALLERY ->
                     MediaGalleryComponentView(this.context)
                 ComponentType.FILE ->
-                    null
+                    FileComponentView(this.context)
                 ComponentType.SEPARATOR ->
                     SeparatorComponentView(this.context)
                 ComponentType.CONTAINER ->
