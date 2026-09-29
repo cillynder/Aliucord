@@ -40,6 +40,7 @@ class ContainerComponentView(ctx: Context) : ConstraintLayout(ctx), ComponentVie
                 topToTop = PARENT_ID
                 bottomToBottom = PARENT_ID
                 startToStart = PARENT_ID
+                bottomMargin = ctx.resources.getDimension(R.d.chat_cell_vertical_spacing_padding).toInt()
             }
             ConstraintLayout(ctx).addTo(this) {
                 accentDivider = View(ctx).addTo(this) {
