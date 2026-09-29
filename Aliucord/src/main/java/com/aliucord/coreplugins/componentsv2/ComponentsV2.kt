@@ -10,8 +10,11 @@ import com.aliucord.coreplugins.componentsv2.views.*
 import com.aliucord.entities.CorePlugin
 import com.aliucord.patcher.*
 import com.aliucord.updater.ManagerBuild
+import com.aliucord.utils.accessField
+import com.aliucord.wrappers.embeds.MessageEmbedWrapper.Companion.type
 import com.discord.api.botuikit.*
 import com.discord.api.channel.Channel
+import com.discord.api.message.embed.EmbedType
 import com.discord.api.role.GuildRole
 import com.discord.models.botuikit.*
 import com.discord.models.member.GuildMember
@@ -28,12 +31,12 @@ import com.discord.widgets.botuikit.views.*
 import com.discord.widgets.botuikit.views.select.SelectComponentView
 import com.discord.widgets.chat.list.adapter.WidgetChatListAdapter
 import com.discord.widgets.chat.list.adapter.WidgetChatListAdapterItemBotComponentRow
-import com.discord.widgets.chat.list.entries.BotUiComponentEntry
-import com.discord.widgets.chat.list.entries.ChatListEntry
+import com.discord.widgets.chat.list.entries.*
 import com.discord.widgets.chat.list.model.WidgetChatListModelMessages
 import com.lytefast.flexinput.R
 
 val Message.isComponentV2 get() = ((flags ?: 0) shr 15) and 1 == 1L
+var Message.componentsField by accessField<List<Component>>()
 
 internal class ComponentsV2 : CorePlugin(Manifest("ComponentsV2")) {
     override val isHidden: Boolean = true
@@ -165,6 +168,28 @@ internal class ComponentsV2 : CorePlugin(Manifest("ComponentsV2")) {
         patcher.after<Message>("shouldShowReplyPreviewAsAttachment") { param ->
             if (this.isComponentV2) param.result = true
         }
+
+        patcher.after<ChatListEntry.Companion>(
+            "createEmbedEntries",
+            Message::class.java,
+            StoreMessageState.State::class.java,
+            Boolean::class.javaPrimitiveType!!,
+            Boolean::class.javaPrimitiveType!!,
+            Boolean::class.javaPrimitiveType!!,
+            Boolean::class.javaPrimitiveType!!,
+            Boolean::class.javaPrimitiveType!!,
+            Channel::class.java,
+            GuildMember::class.java,
+            Map::class.java,
+            Map::class.java,
+        ) { param ->
+            @Suppress("UNCHECKED_CAST")
+            val res = param.result as List<ChatListEntry>
+            param.result = res.filter {
+                if (it !is EmbedEntry) return@filter true
+                it.embed.type != EmbedType.COMPONENTS
+            }
+        }
     }
 
     override fun stop(context: Context) {
@@ -172,6 +197,32 @@ internal class ComponentsV2 : CorePlugin(Manifest("ComponentsV2")) {
     }
 
     fun patchMessageItems() {
+        // public final Collection<ChatListEntry> createBotComponentEntries(Message message, long guildId, ComponentChatListState.ComponentStoreState componentStoreState, boolean animateEmojis) {
+        patcher.before<ChatListEntry.Companion>(
+            "createBotComponentEntries",
+            Message::class.java,
+            Long::class.javaPrimitiveType!!,
+            ComponentStoreState::class.java,
+            Boolean::class.javaPrimitiveType!!,
+        ) { (_, msg: Message) ->
+            if (msg.embeds.any { it.type == EmbedType.COMPONENTS }) {
+                // we get a bit cheeky here :>
+                msg.componentsField = msg.embeds.filter { it.type == EmbedType.COMPONENTS }.flatMap { it.components }
+            }
+        }
+        patcher.after<ChatListEntry.Companion>(
+            "createBotComponentEntries",
+            Message::class.java,
+            Long::class.javaPrimitiveType!!,
+            ComponentStoreState::class.java,
+            Boolean::class.javaPrimitiveType!!,
+        ) { (_, msg: Message) ->
+            if (msg.embeds.any { it.type == EmbedType.COMPONENTS }) {
+                val embedComponents = msg.embeds.flatMap { it.components }
+                msg.componentsField = msg.componentsField.filter { it !in embedComponents }
+            }
+        }
+
         @Suppress("UNUSED_DESTRUCTURED_PARAMETER_ENTRY", "LocalVariableName", "UnusedVariable")
         patcher.patch(
             WidgetChatListModelMessages.Companion::class.java.declaredMethods.find { it.name == "getMessageItems" }!!

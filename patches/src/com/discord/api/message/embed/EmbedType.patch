@@ -1,6 +1,15 @@
 --- smali_original/com/discord/api/message/embed/EmbedType.smali
 +++ smali/com/discord/api/message/embed/EmbedType.smali
-@@ -70,6 +70,8 @@
+@@ -60,6 +60,8 @@
+ 
+ .field public static final enum ARTICLE:Lcom/discord/api/message/embed/EmbedType;
+ 
++.field public static final enum COMPONENTS:Lcom/discord/api/message/embed/EmbedType;
++
+ .field public static final enum FILE:Lcom/discord/api/message/embed/EmbedType;
+ 
+ .field public static final enum GIFV:Lcom/discord/api/message/embed/EmbedType;
+@@ -70,6 +72,8 @@
  
  .field public static final enum LINK:Lcom/discord/api/message/embed/EmbedType;
  
@@ -9,17 +18,28 @@
  .field public static final enum RICH:Lcom/discord/api/message/embed/EmbedType;
  
  .field public static final enum TWEET:Lcom/discord/api/message/embed/EmbedType;
-@@ -87,7 +89,7 @@ # direct methods
+@@ -87,7 +91,7 @@ # direct methods
  .method public static constructor <clinit>()V
      .locals 5
  
 -    const/16 v0, 0xb
-+    const/16 v0, 0xc
++    const/16 v0, 0xd
  
      new-array v0, v0, [Lcom/discord/api/message/embed/EmbedType;
  
-@@ -237,6 +239,21 @@ .method public static constructor <clini
-     .line 10
+@@ -243,15 +247,45 @@ .method public static constructor <clini
+ 
+     new-instance v1, Lcom/discord/api/message/embed/EmbedType;
+ 
+-    const-string v2, "UNKNOWN"
++    const-string v2, "POLL_RESULT"
+ 
+     const/16 v3, 0xa
+ 
+-    const-string/jumbo v4, "unknown"
++    const-string/jumbo v4, "poll_result"
+ 
+     .line 11
      invoke-direct {v1, v2, v3, v4}, Lcom/discord/api/message/embed/EmbedType;-><init>(Ljava/lang/String;ILjava/lang/String;)V
  
 +    sput-object v1, Lcom/discord/api/message/embed/EmbedType;->POLL_RESULT:Lcom/discord/api/message/embed/EmbedType;
@@ -28,29 +48,30 @@
 +
 +    new-instance v1, Lcom/discord/api/message/embed/EmbedType;
 +
-+    const-string v2, "POLL_RESULT"
++    const-string v2, "COMPONENTS"
 +
-+    const/16 v3, 0xa
++    const/16 v3, 0xb
 +
-+    const-string/jumbo v4, "poll_result"
++    const-string/jumbo v4, "components"
 +
-+    .line 11
++    .line 12
 +    invoke-direct {v1, v2, v3, v4}, Lcom/discord/api/message/embed/EmbedType;-><init>(Ljava/lang/String;ILjava/lang/String;)V
 +
-     sput-object v1, Lcom/discord/api/message/embed/EmbedType;->APPLICATION_NEWS:Lcom/discord/api/message/embed/EmbedType;
++    sput-object v1, Lcom/discord/api/message/embed/EmbedType;->COMPONENTS:Lcom/discord/api/message/embed/EmbedType;
++
++    aput-object v1, v0, v3
++
++    new-instance v1, Lcom/discord/api/message/embed/EmbedType;
++
++    const-string v2, "UNKNOWN"
++
++    const/16 v3, 0xc
++
++    const-string/jumbo v4, "unknown"
++
++    .line 12
++    invoke-direct {v1, v2, v3, v4}, Lcom/discord/api/message/embed/EmbedType;-><init>(Ljava/lang/String;ILjava/lang/String;)V
++
+     sput-object v1, Lcom/discord/api/message/embed/EmbedType;->UNKNOWN:Lcom/discord/api/message/embed/EmbedType;
  
      aput-object v1, v0, v3
-@@ -245,11 +262,11 @@ .method public static constructor <clini
- 
-     const-string v2, "UNKNOWN"
- 
--    const/16 v3, 0xa
-+    const/16 v3, 0xb
- 
-     const-string/jumbo v4, "unknown"
- 
--    .line 11
-+    .line 12
-     invoke-direct {v1, v2, v3, v4}, Lcom/discord/api/message/embed/EmbedType;-><init>(Ljava/lang/String;ILjava/lang/String;)V
- 
-     sput-object v1, Lcom/discord/api/message/embed/EmbedType;->UNKNOWN:Lcom/discord/api/message/embed/EmbedType;
