@@ -10,8 +10,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+import com.aliucord.coreplugins.componentsv2.applyEmbedStyle
 import com.aliucord.coreplugins.componentsv2.models.FileMessageComponent
-import com.aliucord.coreplugins.componentsv2.views.ContainerComponentView.Companion.applyEmbedStyle
 import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.utils.R
 import com.aliucord.utils.ViewUtils.addTo
@@ -34,10 +34,12 @@ class FileComponentView(ctx: Context) : ConstraintLayout(ctx), ComponentView<Fil
     private lateinit var descriptionView: TextView
     private lateinit var downloadView: ImageView
 
-    private val iconId = generateViewId()
-    private val nameId = generateViewId()
-    private val descriptionId = generateViewId()
-    private val downloadId = generateViewId()
+    companion object {
+        private val iconId = generateViewId()
+        private val nameId = generateViewId()
+        private val descriptionId = generateViewId()
+        private val downloadId = generateViewId()
+    }
 
     /* Reference: widget_chat_list_adapter_item_attachment.xml:chat_list_item_attachment_card */
     init {

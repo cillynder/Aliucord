@@ -1,12 +1,12 @@
 package com.aliucord.coreplugins.componentsv2.views
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
 import androidx.core.graphics.ColorUtils
+import com.aliucord.coreplugins.componentsv2.applyEmbedStyle
 import com.aliucord.coreplugins.componentsv2.models.ContainerMessageComponent
 import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.utils.R
@@ -26,15 +26,6 @@ class ContainerComponentView(ctx: Context) : ConstraintLayout(ctx), ComponentVie
 
     companion object {
         private val accentDividerId = View.generateViewId()
-
-        fun MaterialCardView.applyEmbedStyle() {
-            setCardBackgroundColor(ColorCompat.getThemedColor(context, R.attr.colorBackgroundSecondary))
-            radius = 8.dp.toFloat()
-            elevation = 0f
-            rippleColor = ColorStateList.valueOf(ColorCompat.getThemedColor(this, R.attr.primary_400_alpha_30))
-            strokeColor = ColorCompat.getThemedColor(this, R.attr.primary_700_alpha_60)
-            strokeWidth = resources.getDimensionPixelSize(R.dimen.chat_embed_card_stroke_width).toInt()
-        }
     }
 
     private lateinit var accentDivider: View
