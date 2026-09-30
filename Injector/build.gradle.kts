@@ -50,8 +50,8 @@ kotlin {
 }
 
 dependencies {
+    compileOnly(project(":patches"))
     compileOnly(libs.aliuhook)
     compileOnly(libs.appcompat)
-    compileOnly(libs.discord)
     compileOnly(libs.kotlin.stdlib)
 }

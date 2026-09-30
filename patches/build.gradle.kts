@@ -1,33 +1,20 @@
 
 import com.aliucord.gradle.task.adb.AdbTask
 import com.aliucord.gradle.task.adb.RestartAliucordTask
+import com.aliucord.gradle.transformers.Dex2JarTransform
 import com.googlecode.d2j.dex.Dex2jar
 import com.googlecode.d2j.reader.DexFileReader
-import com.googlecode.d2j.reader.MultiDexFileReader
-import com.googlecode.d2j.util.zip.ZipFile
 import org.gradle.api.internal.file.FileOperations
 import org.gradle.kotlin.dsl.support.serviceOf
 import java.io.ByteArrayOutputStream
 import java.util.Properties
-import java.util.TreeMap
 
 version = "1.5.0"
 
 // --- Android --- //
 
 plugins {
-    alias(libs.plugins.android.library)
-}
-
-android {
-    namespace = "com.aliucord.patches"
-    compileSdk = 36
-
-    androidComponents {
-        beforeVariants(selector().withBuildType("release")) { variantBuilder ->
-            variantBuilder.enable = false
-        }
-    }
+    `java-library`
 }
 
 // ------ Dependencies ------ //
@@ -37,6 +24,13 @@ val smaliTools by configurations.registering
 val discord by configurations.registering
 
 dependencies {
+    project.dependencies {
+        registerTransform(Dex2JarTransform::class) {
+            from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "apk")
+            to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
+        }
+    }
+
     smaliTools(libs.smali)
     smaliTools(libs.smali.baksmali)
     discord(libs.discord)
@@ -190,6 +184,24 @@ val applyPatches = tasks.register("applyPatches") {
     }
 }
 
+val generatePatchesJar = tasks.register("generatePatchesJar") {
+    group = TASK_GROUP_INTERNAL
+    // dependsOn(assembleDex)
+
+    val outputJar = layout.buildDirectory.file("intermediates/patches_${version}.jar")
+    val assembledDex = assembleDex.map { it.outputs.files.singleFile }
+    inputs.file(assembledDex)
+    outputs.file(outputJar)
+
+    doLast {
+        Dex2jar.from(DexFileReader(assembledDex.get().readBytes()))
+            .skipDebug(false)
+            .topoLogicalSort()
+            .noCode(false)
+            .to(outputJar.get().asFile.toPath())
+    }
+}
+
 // --- Public tasks --- //
 
 tasks.named<Delete>("clean") {
@@ -197,29 +209,90 @@ tasks.named<Delete>("clean") {
     delete(smaliDir)
 }
 
-tasks.register("disassembleWithPatches") {
+val disassembleWithPatches = tasks.register("disassembleWithPatches") {
     group = TASK_GROUP
     dependsOn(disassembleInternal, copyDisassembled, applyPatches)
 }
 
-val assembleDex by tasks.register<JavaExec>("assembleDex") {
+val assembleDex = tasks.register<JavaExec>("assembleDex") {
     group = TASK_GROUP
+    if (!smaliDir.exists() || !smaliOriginalDir.get().asFile.exists()) {
+        dependsOn(disassembleWithPatches)
+    }
     mustRunAfter(applyPatches) // When applyPatches is also being run, it must come before
 
     // Configuration cache workaround
     val smaliDir = smaliDir
-    val outputDex = layout.buildDirectory.file("patched.dex")
+    val outputDex = layout.buildDirectory.file("intermediates/patched.dex")
 
-    // Get all patch files and their corresponding smali file
-    val patchFiles = fileTree(patchesDir) { include("**/*.patch") }
-    val smaliFiles = patchFiles.map { file ->
-        file.toRelativeString(patchesDir)
-            .replace(".patch", ".smali")
-            .let(smaliDir::resolve)
+    // Check for diffs without doing `writePatches`
+    val smaliOriginalDir = smaliOriginalDir
+    val projectDir = projectDir
+    val diffBin = localProperties.getProperty("diff.bin", null)
+        ?: project.findProperty("diff.bin") as String?
+        ?: "diff"
+
+    val patchOutput = providers.exec {
+        commandLine(
+            diffBin,
+            "--recursive",
+            "--brief",
+            "--strip-trailing-cr",
+            "./" + smaliOriginalDir.get().asFile
+                .toRelativeString(projectDir)
+                .replace('\\', '/'),
+            "./" + smaliDir
+                .toRelativeString(projectDir)
+                .replace('\\', '/'),
+        )
+        workingDir = projectDir
+        isIgnoreExitValue = true
+    }
+    val changedFiles = patchOutput.standardOutput.asText.map { output ->
+        output.lines()
+            .mapNotNull { line ->
+                val filepath = if (line.endsWith("differ"))
+                    // example:
+                    // Files './build/smali_original/com/discord/restapi/RestAPIParams$UserRelationship$Add.smali' and './smali/com/discord/restapi/RestAPIParams$UserRelationship$Add.smali' differ
+                    line.split(' ')[3].replace("'", "")
+                else if (line.startsWith("Only in"))
+                    // example:
+                    // Only in './smali/com/discord/a/b$c': 'd$e.smali'
+                    line.split(' ')[2].replace("'", "").substringBefore(':') + "/" + line.split(' ').last().replace("'", "")
+                else null
+
+                filepath?.let { filepath ->
+                    projectDir.resolve(filepath)
+                        .normalize()
+                        .takeIf { it.startsWith(smaliDir) }
+                }
+            }
+            // Read for inner class annotations. We bring these in too since they get put into the same class file, without this they'll disappear
+            .flatMap { file ->
+                val content = file.readLines().iterator()
+                var reading = false
+                var classes = mutableListOf(file)
+                for (line in content) {
+                    val line = line.trim()
+                    if (reading) {
+                        if (line.startsWith("L")) {
+                            val clazz = line.substringAfter('L').substringBefore(';')
+                            classes.add(smaliDir.resolve("$clazz.smali"))
+                        } else if (line == ".end annotation") {
+                            break
+                        }
+                    } else if (line == ".annotation system Ldalvik/annotation/MemberClasses;") {
+                        reading = true
+                    }
+                }
+                return@flatMap classes
+            }
+            // Filter out duplicates
+            .toSet()
     }
 
     // Up-to-Date config
-    inputs.files(patchFiles, smaliFiles)
+    inputs.files(changedFiles)
     outputs.file(outputDex)
 
     // Add version metadata
@@ -249,7 +322,7 @@ val assembleDex by tasks.register<JavaExec>("assembleDex") {
         "assemble",
         "--verbose",
         "--output", outputDex.get().asFile.absolutePath,
-    ) + smaliFiles.map { it.absolutePath } + metadata.absolutePath
+    ) + changedFiles.get().map { it.absolutePath } + metadata.absolutePath
 
     doFirst {
         if (!smaliDir.exists()) {
@@ -299,7 +372,7 @@ val restartAliucordTask by tasks.register<RestartAliucordTask>("restartAliucord"
 tasks.register<DeployPatchesTask>("deployWithAdb") {
     group = TASK_GROUP
     dependsOn(assembleDex)
-    deployFile = assembleDex.outputs.files.singleFile
+    deployFile = assembleDex.map { outputs.files.singleFile }
     finalizedBy(restartAliucordTask)
 }
 
@@ -381,40 +454,29 @@ tasks.register("writePatches") {
     }
 }
 
-val patchedJar = tasks.register("patchedJar") {
+val generateMergedJar = tasks.register<Jar>("generateMergedJar") {
     group = TASK_GROUP
-    dependsOn(assembleDex)
+    val patchesJar = generatePatchesJar.map { it.outputs.files.singleFile }
+    inputs.file(patchesJar)
 
-    val disc = discord.get().singleFile
-    val inputDex = layout.buildDirectory.file("patched.dex")
-    val outputJarFile = layout.buildDirectory.file("${disc.nameWithoutExtension}_patched_${version}.jar")
-
-    inputs.files(inputDex, disc)
-    outputs.file(outputJarFile)
-
-    doLast {
-        val dexFileReaders = TreeMap<String, DexFileReader>()
-        ZipFile(disc.readBytes()).use { zipFile ->
-            for (e in zipFile.entries()) {
-                val entryName: String = e.getName()
-                if (entryName.startsWith("classes") && entryName.endsWith(".dex")) {
-                    if (!dexFileReaders.containsKey(entryName)) { // only the first one
-                        dexFileReaders[entryName] = DexFileReader(zipFile.getInputStream(e).readBytes())
-                    }
-                }
-            }
+    val disc = discord.get().incoming
+        .artifactView {
+            attributes.attribute(
+                ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE,
+                ArtifactTypeDefinition.JAR_TYPE)
         }
-        val aug = DexFileReader(inputDex.get().asFile.readBytes())
-        val reader = MultiDexFileReader(listOf(aug) + dexFileReaders.values)
+        .files
+        .singleFile
 
-        Dex2jar.from(reader)
-            .skipDebug(false)
-            .topoLogicalSort()
-            .noCode(false)
-            .to(outputJarFile.get().asFile.toPath())
-    }
+    archiveBaseName = disc.nameWithoutExtension
+    archiveAppendix = "patched"
+    archiveVersion = version.toString()
+
+    from(files(patchesJar, disc).map { zipTree(it) })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-artifacts {
-    add("default", patchedJar)
+configurations.apiElements {
+    outgoing.artifacts.clear()
+    outgoing.artifact(generateMergedJar)
 }
