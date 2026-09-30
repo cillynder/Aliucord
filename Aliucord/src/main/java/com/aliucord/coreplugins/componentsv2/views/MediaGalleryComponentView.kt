@@ -7,11 +7,11 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+import com.aliucord.coreplugins.componentsv2.asAttachment
 import com.aliucord.coreplugins.componentsv2.models.MediaGalleryMessageComponent
 import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.utils.ViewUtils.addTo
 import com.aliucord.widgets.LinearLayout
-import com.aliucord.wrappers.messages.AttachmentWrapper
 import com.aliucord.wrappers.messages.AttachmentWrapper.Companion.height
 import com.aliucord.wrappers.messages.AttachmentWrapper.Companion.width
 import com.discord.api.botuikit.ComponentType
@@ -66,17 +66,7 @@ class MediaGalleryComponentView(ctx: Context) : ConstraintLayout(ctx), Component
         layout.removeAllViews()
         val pendingViews = mutableListOf<Pair<MessageAttachment, InlineMediaView>>()
         component.items.forEachIndexed { index, it ->
-            val media = it.media
-            // TODO: there's probably a utility to extract filename from url
-            val name = media.url.split("/").last().split("?").first()
-            val attachment = AttachmentWrapper.create(
-                name,
-                0,
-                media.proxyUrl,
-                media.url,
-                media.width,
-                media.height,
-            )
+            val attachment = it.media.asAttachment()
 
             val (width, height) = EmbedResourceUtils.INSTANCE.calculateScaledSize(
                 attachment.width!!,

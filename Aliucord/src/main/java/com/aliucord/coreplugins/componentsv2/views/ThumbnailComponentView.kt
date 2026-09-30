@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import androidx.constraintlayout.widget.ConstraintLayout
+import com.aliucord.coreplugins.componentsv2.asAttachment
 import com.aliucord.coreplugins.componentsv2.models.ThumbnailMessageComponent
 import com.aliucord.utils.DimenUtils.dp
 import com.aliucord.utils.ViewUtils.addTo
@@ -16,6 +17,7 @@ import com.discord.widgets.botuikit.ComponentProvider
 import com.discord.widgets.botuikit.views.ComponentActionListener
 import com.discord.widgets.botuikit.views.ComponentView
 import com.discord.widgets.chat.list.adapter.WidgetChatListAdapterItemBotComponentRow
+import com.discord.widgets.media.WidgetMedia
 import com.facebook.drawee.view.SimpleDraweeView
 import com.google.android.material.card.MaterialCardView
 import com.lytefast.flexinput.R
@@ -54,6 +56,7 @@ class ThumbnailComponentView(ctx: Context) : ConstraintLayout(ctx), ComponentVie
         val item = listener as WidgetChatListAdapterItemBotComponentRow
         val entry = item.entry
 
+        val attachment = component.media.asAttachment()
         val (width, height) = EmbedResourceUtils.INSTANCE.calculateScaledSize(
             component.media.width,
             component.media.height,
@@ -80,6 +83,9 @@ class ThumbnailComponentView(ctx: Context) : ConstraintLayout(ctx), ComponentVie
                 252,
                 null
             )
+            setOnClickListener {
+                WidgetMedia.Companion!!.launch(context, attachment);
+            }
         }
 
         spoilerView.configure(entry, component)
