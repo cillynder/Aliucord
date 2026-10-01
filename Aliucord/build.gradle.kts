@@ -65,11 +65,11 @@ kotlin {
 dependencies {
     api(libs.aliuhook)
     compileOnly(project(":Aliucord:stubs"))
+    compileOnly(project(":patches"))
     compileOnly(libs.appcompat)
     compileOnly(libs.constraintlayout)
     compileOnly(libs.kotlin.stdlib)
     compileOnly(libs.material)
-    compileOnly(project(":patches"))
     compileOnly(project(":Injector")) // Needed to access certain stubs
     coreLibraryDesugaring(libs.desugar)
 }
