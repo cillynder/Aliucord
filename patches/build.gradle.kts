@@ -225,6 +225,10 @@ val assembleDex = tasks.register<JavaExec>("assembleDex") {
     val smaliDir = smaliDir
     val outputDex = layout.buildDirectory.file("intermediates/patched.dex")
 
+    // Up-to-Date config
+    inputs.files(smaliDir)
+    outputs.file(outputDex)
+
     // Check for diffs without doing `writePatches`
     val smaliOriginalDir = smaliOriginalDir
     val projectDir = projectDir
@@ -291,10 +295,6 @@ val assembleDex = tasks.register<JavaExec>("assembleDex") {
             .toSet()
     }
 
-    // Up-to-Date config
-    inputs.files(changedFiles)
-    outputs.file(outputDex)
-
     // Add version metadata
     val metadata = File(temporaryDir, "PatchesMetadata.smali")
     metadata.writeText("""
@@ -318,11 +318,13 @@ val assembleDex = tasks.register<JavaExec>("assembleDex") {
     classpath(smaliTools)
     jvmArgs = listOf("-Xmx2G")
     mainClass = "com.android.tools.smali.smali.Main"
-    args = listOf(
-        "assemble",
-        "--verbose",
-        "--output", outputDex.get().asFile.absolutePath,
-    ) + changedFiles.get().map { it.absolutePath } + metadata.absolutePath
+    argumentProviders.add {
+        listOf(
+            "assemble",
+            "--verbose",
+            "--output", outputDex.get().asFile.absolutePath,
+        ) + changedFiles.get().map { it.absolutePath } + metadata.absolutePath
+    }
 
     doFirst {
         if (!smaliDir.exists()) {
